@@ -1,0 +1,1567 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>OMS360</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;500;600;700&display=swap">
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
+<style>
+:root{
+  --ground:#040a1f; --card:#08122f; --panel:#0a132f; --tile:#0c1636;
+  --hdr:linear-gradient(90deg,#0b1740,#122055);
+  --bd:#1c2c60; --bd2:#16234f; --rule:#14204a; --outline:#24356e; --dash:#17244d;
+  --t1:#eaf0ff; --t2:#e3e9fb; --t3:#8a96c0; --t4:#7c88b2; --lbl:#5d6a94; --faint:#3f4c78; --faint2:#4d5a86;
+  --blue:#2b6bff; --blue2:#6f9dff; --bluefill:#1c3f8f; --bluedim:#12224f; --bluehov:#a9c4ff;
+  --pur:#7c5cf0; --pur2:#c3b1ff; --pur3:#dcd2ff; --purbd:#2a2260; --purtrack:#1b1a44; --purfill:rgba(124,92,240,.12);
+  --amber:#f5a623; --amber2:#f0d7a8; --amberbd:#5b3a12; --amberfill:rgba(245,166,35,.1);
+  --orange:#f07a2e;
+  --green:#3ec46d; --greenfill:rgba(62,196,109,.1);
+  --red:#e0506a; --redbd:#6d1f2c; --redfill:rgba(224,80,106,.12);
+  --sb:226px;
+}
+*{box-sizing:border-box}
+html,body{margin:0;padding:0}
+body{background:var(--ground);font-family:Poppins,system-ui,sans-serif;color:var(--t2);-webkit-font-smoothing:antialiased}
+a{color:var(--blue2);text-decoration:none}
+::-webkit-scrollbar{width:9px;height:9px}
+::-webkit-scrollbar-track{background:var(--ground)}
+::-webkit-scrollbar-thumb{background:#1c2c60;border-radius:5px}
+
+.app{display:flex;min-height:100vh}
+.sidebar{width:var(--sb);flex:none;background:var(--panel);border-right:1px solid var(--bd2);display:flex;flex-direction:column;position:fixed;top:0;bottom:0;left:0;z-index:1200}
+.main{margin-left:var(--sb);flex:1;min-width:0;display:flex;flex-direction:column}
+.content{padding:18px 24px 40px;max-width:1600px;width:100%}
+
+.brand{display:flex;align-items:center;gap:10px;padding:14px 14px 13px;border-bottom:1px solid var(--bd2)}
+.brand img{height:30px;max-width:110px;object-fit:contain;background:#fff;border-radius:6px;padding:3px 6px}
+.brand-name{font:600 16px Poppins,sans-serif;color:var(--t1);letter-spacing:.02em}
+.brand-name span{color:var(--blue2)}
+.brand-sub{font:300 9px Poppins,sans-serif;color:var(--t4);letter-spacing:.06em}
+.nav{flex:1;overflow-y:auto;padding:10px}
+.nav-label{font:500 9.5px Poppins,sans-serif;color:var(--lbl);letter-spacing:.14em;text-transform:uppercase;padding:10px 8px 7px}
+.nav-item{display:flex;align-items:center;gap:10px;width:100%;text-align:left;background:none;border:0;cursor:pointer;font:400 12px Poppins,sans-serif;color:var(--t3);padding:8px 10px;border-radius:7px;margin-bottom:2px}
+.nav-item:hover{background:#0c1636;color:var(--t2)}
+.nav-item.on{background:var(--blue);color:#fff;font-weight:500}
+.nav-item.jv{color:var(--pur2)}
+.nav-item.jv.on{background:var(--pur);color:#fff}
+.ic{width:15px;height:15px;flex:none;opacity:.85}
+.count{margin-left:auto;font:600 9.5px Poppins,sans-serif;color:#ffd4dc;background:var(--redfill);border:1px solid var(--redbd);border-radius:10px;padding:1px 6px}
+.nav-item.on .count{background:rgba(255,255,255,.2);border-color:transparent;color:#fff}
+.sb-foot{border-top:1px solid var(--bd2);padding:11px 12px}
+.sb-user{display:flex;align-items:center;gap:9px}
+.sb-org{display:flex;align-items:center;gap:8px;margin-top:10px;padding:7px 9px;border:1px solid var(--outline);border-radius:7px;background:var(--tile)}
+
+.topbar{position:sticky;top:0;z-index:1100;background:var(--hdr);border-bottom:1px solid var(--bd)}
+.topbar-row{padding:11px 24px;display:flex;align-items:center;gap:14px}
+.topbar h1{font:600 17px Poppins,sans-serif;color:var(--t1);margin:0}
+.topbar .sub{font:300 11px Poppins,sans-serif;color:var(--t3);margin-top:2px}
+.topbar-actions{margin-left:auto;display:flex;align-items:center;gap:8px}
+.timeline{display:flex;align-items:center;gap:0;padding:0 24px 11px}
+.tl-step{flex:1;position:relative;background:none;border:0;cursor:pointer;padding:0 4px;text-align:left}
+.tl-bar{height:5px;border-radius:3px;background:var(--bd2)}
+.tl-step.done .tl-bar{background:var(--blue2)}
+.tl-step.on .tl-bar{background:var(--amber);box-shadow:0 0 10px rgba(245,166,35,.6)}
+.tl-lbl{font:500 10px Poppins,sans-serif;color:var(--t4);margin-top:5px;display:flex;gap:6px}
+.tl-lbl b{font-weight:600;color:var(--t3)}
+.tl-step.on .tl-lbl,.tl-step.on .tl-lbl b{color:var(--amber2)}
+.tl-step:hover .tl-lbl{color:var(--t2)}
+.simtag{font:600 9px Poppins,sans-serif;letter-spacing:.12em;color:var(--amber2);border:1px dashed var(--amber);border-radius:4px;padding:3px 7px;text-transform:uppercase}
+.livetag{font:600 9px Poppins,sans-serif;letter-spacing:.1em;color:#bff0d0;border:1px solid rgba(62,196,109,.4);background:var(--greenfill);border-radius:4px;padding:3px 7px;text-transform:uppercase;display:inline-flex;align-items:center;gap:5px}
+.livetag i{width:6px;height:6px;border-radius:50%;background:var(--green);animation:pulse 1.4s infinite}
+@keyframes pulse{0%,100%{opacity:1}50%{opacity:.25}}
+
+.avatar{width:28px;height:28px;border-radius:50%;background:var(--bd);flex:none;display:flex;align-items:center;justify-content:center;font:600 9.5px Poppins,sans-serif;color:#cfdcff}
+.btn{font:400 11px Poppins,sans-serif;color:var(--t3);background:none;border:1px solid var(--outline);border-radius:6px;padding:6px 13px;cursor:pointer;white-space:nowrap;display:inline-flex;align-items:center;gap:6px}
+.btn:hover{border-color:#2b4a9e;color:var(--t2)}
+.btn-primary{background:var(--blue);border-color:var(--blue);color:#fff;font-weight:500}
+.btn-primary:hover{background:#1a5aef;color:#fff}
+.btn-ai{background:var(--purfill);border-color:var(--pur);color:var(--pur3);font-weight:500}
+.btn-ai:hover{background:rgba(124,92,240,.25);color:#fff}
+.btn-warn{background:var(--amberfill);border-color:var(--amber);color:var(--amber2);font-weight:500}
+.btn-ok{background:var(--greenfill);border-color:rgba(62,196,109,.5);color:#bff0d0}
+.btn-sm{padding:4px 10px;font-size:10.5px}
+.btn:disabled{opacity:.5;cursor:not-allowed}
+
+.card{background:var(--card);border:1px solid var(--bd);border-radius:12px;overflow:hidden}
+.panel{background:var(--panel);border:1px solid var(--bd2);border-radius:10px}
+.tile{background:var(--tile);border:1px solid var(--bd2);border-radius:9px}
+.card-h{display:flex;align-items:center;gap:10px;padding:12px 16px;border-bottom:1px solid var(--bd2);flex-wrap:wrap}
+.card-h h3{font:500 12.5px Poppins,sans-serif;color:var(--t2);margin:0}
+.card-h .hint{font:300 10.5px Poppins,sans-serif;color:var(--lbl)}
+.card-b{padding:14px 16px}
+.sec-label{font:500 10px Poppins,sans-serif;color:var(--lbl);letter-spacing:.14em;text-transform:uppercase}
+.muted{color:var(--t4)} .dim{color:var(--lbl)}
+.num{font:600 22px Poppins,sans-serif;color:var(--t1);line-height:1.1}
+.num-sm{font:600 15px Poppins,sans-serif;color:var(--t1)}
+.pos{color:var(--green)}.neg{color:var(--red)}.warnc{color:var(--amber2)}.aic{color:var(--pur2)}
+
+.kpis{display:grid;grid-template-columns:repeat(6,1fr);gap:11px}
+.kpi{padding:12px 14px}
+.kpi .k{font:400 9.5px Poppins,sans-serif;color:var(--t4);letter-spacing:.1em;text-transform:uppercase}
+.kpi .v{margin-top:6px}
+.kpi .s{font:300 10px Poppins,sans-serif;color:var(--t4);margin-top:3px}
+.kpi.clickable{cursor:pointer}.kpi.clickable:hover{border-color:#2b4a9e}
+
+.meter{height:6px;border-radius:3px;background:var(--bd2);overflow:hidden}
+.meter>i{display:block;height:100%;border-radius:3px;background:var(--green)}
+
+table.tbl{width:100%;border-collapse:collapse}
+.tbl th{font:500 9.5px Poppins,sans-serif;color:var(--lbl);letter-spacing:.12em;text-transform:uppercase;text-align:left;padding:9px 12px;border-bottom:1px solid var(--bd2);white-space:nowrap}
+.tbl td{font:400 11.5px Poppins,sans-serif;color:var(--t2);padding:9px 12px;border-bottom:1px solid var(--rule);vertical-align:middle}
+.tbl tr:last-child td{border-bottom:0}
+.tbl tbody tr:hover{background:#0a1430}
+.tbl td.n,.tbl th.n{text-align:right;font-variant-numeric:tabular-nums}
+
+.tag{font:500 9.5px Poppins,sans-serif;border-radius:4px;padding:3px 7px;display:inline-block;white-space:nowrap}
+.tag-ai{color:var(--pur2);background:var(--purfill);border:1px dashed var(--pur)}
+.tag-sk{color:var(--t3);border:1px solid var(--outline)}
+.tag-ok{color:var(--green);background:var(--greenfill);border:1px solid rgba(62,196,109,.3)}
+.tag-warn{color:var(--amber2);background:var(--amberfill);border:1px solid var(--amberbd)}
+.tag-bad{color:#ffd4dc;background:var(--redfill);border:1px solid var(--redbd)}
+.tag-info{color:#cfdcff;background:var(--bluedim);border:1px solid var(--outline)}
+.dot{width:7px;height:7px;border-radius:50%;flex:none;display:inline-block}
+
+.ai-panel{border:1px solid var(--purbd);border-radius:10px;background:rgba(124,92,240,.07)}
+.ai-glyph{width:26px;height:26px;border-radius:7px;background:rgba(124,92,240,.3);border:1px solid var(--pur);flex:none;display:flex;align-items:center;justify-content:center;color:var(--pur3)}
+.why{margin-top:8px;border-top:1px dashed var(--purbd);padding-top:8px}
+.why summary{font:400 10.5px Poppins,sans-serif;color:var(--pur2);cursor:pointer;list-style:none;display:flex;align-items:center;gap:6px}
+.why summary::-webkit-details-marker{display:none}
+.why summary::before{content:"?";display:inline-flex;align-items:center;justify-content:center;width:13px;height:13px;border-radius:50%;border:1px solid var(--pur);font:600 8px Poppins,sans-serif;flex:none}
+.why[open] summary{margin-bottom:6px}
+.why p{margin:0;font:300 10.5px/1.7 Poppins,sans-serif;color:var(--t3)}
+
+.action{border:1px solid var(--bd2);border-left:3px solid var(--amber);border-radius:9px;background:var(--tile);padding:11px 13px}
+.action.Critical{border-left-color:var(--red)}
+.action.done{border-left-color:var(--green);opacity:.62}
+
+.field{width:100%;background:var(--tile);border:1px solid var(--outline);border-radius:8px;padding:10px 12px;font:400 12px Poppins,sans-serif;color:var(--t2);outline:none}
+.field:focus{border-color:var(--blue);box-shadow:0 0 0 3px rgba(43,107,255,.14)}
+.field::placeholder{color:var(--faint2)}
+select.field{cursor:pointer;padding:7px 10px;font-size:11.5px;width:auto}
+select.field option{background:#0c1636}
+input[type=range]{-webkit-appearance:none;appearance:none;width:100%;height:6px;border-radius:3px;background:linear-gradient(90deg,#3ec46d,#f5a623,#e0506a);outline:none}
+input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;width:18px;height:18px;border-radius:50%;background:#fff;border:3px solid var(--pur);cursor:pointer}
+
+.switch{position:relative;width:34px;height:19px;border-radius:12px;background:var(--bd);border:1px solid var(--outline);cursor:pointer;flex:none;padding:0}
+.switch::after{content:"";position:absolute;top:2px;left:2px;width:13px;height:13px;border-radius:50%;background:var(--t4);transition:.2s}
+.switch.on{background:var(--green);border-color:var(--green)}
+.switch.on::after{left:17px;background:#fff}
+
+.grid2{display:grid;grid-template-columns:1fr 1fr;gap:14px}
+.grid3{display:grid;grid-template-columns:repeat(3,1fr);gap:14px}
+.row{display:flex;gap:14px}
+.stack{display:flex;flex-direction:column;gap:14px}
+.legend{display:flex;gap:12px;flex-wrap:wrap;font:300 10px Poppins,sans-serif;color:var(--t4)}
+.legend span{display:flex;align-items:center;gap:5px}
+.sw{width:9px;height:9px;border-radius:2px;display:inline-block}
+.empty{padding:30px;text-align:center;font:300 12px Poppins,sans-serif;color:var(--faint2)}
+
+/* map */
+.map{height:430px;border-radius:0;background:#071027;position:relative}
+.leaflet-container{background:#071027;font-family:Poppins,sans-serif}
+.osm-dark{filter:invert(1) hue-rotate(200deg) brightness(.75) contrast(.9)}
+.leaflet-popup-content-wrapper,.leaflet-popup-tip{background:#0c1636;color:var(--t2);border:1px solid var(--outline);box-shadow:0 10px 30px rgba(0,0,0,.6)}
+.leaflet-popup-content{margin:10px 12px;font:400 11px/1.6 Poppins,sans-serif}
+.leaflet-popup-content b{color:var(--t1)}
+.leaflet-control-attribution{background:rgba(4,10,31,.7)!important;color:var(--faint2)!important;font-size:9px}
+.leaflet-control-attribution a{color:var(--t4)!important}
+.leaflet-bar a{background:#0c1636;color:var(--t2);border-color:var(--outline)}
+.leaflet-bar a:hover{background:#12224f}
+.leaflet-tooltip.zlabel{background:none;border:0;box-shadow:none;color:#eaf0ff;font:500 10px Poppins,sans-serif;text-shadow:0 1px 3px #000,0 0 6px #000;padding:0}
+.leaflet-tooltip.zlabel::before{display:none}
+.hurr{font-size:30px;line-height:30px;text-align:center;animation:spin 3s linear infinite;filter:drop-shadow(0 0 8px rgba(255,255,255,.6))}
+@keyframes spin{to{transform:rotate(-360deg)}}
+.fac{width:20px;height:20px;border-radius:5px;display:flex;align-items:center;justify-content:center;font:700 10px Poppins,sans-serif;color:#fff;border:1.5px solid #fff;box-shadow:0 0 6px rgba(0,0,0,.8)}
+.map-legend{position:absolute;left:10px;bottom:10px;z-index:500;background:rgba(8,18,47,.88);border:1px solid var(--outline);border-radius:8px;padding:7px 10px}
+
+/* chat */
+.chat{display:flex;flex-direction:column;gap:10px;overflow-y:auto}
+.msg{max-width:88%;padding:10px 13px;border-radius:12px;font:400 12px/1.65 Poppins,sans-serif}
+.msg.me{align-self:flex-end;background:var(--blue);color:#fff;border-bottom-right-radius:3px}
+.msg.ai{align-self:flex-start;background:rgba(124,92,240,.12);border:1px solid var(--purbd);color:var(--t2);border-bottom-left-radius:3px}
+.msg.ai b{color:var(--pur3)}
+.msg ul{margin:6px 0 0;padding-left:18px}
+.msg .act{margin-top:8px;display:flex;gap:6px;flex-wrap:wrap}
+.mic{width:40px;height:40px;border-radius:50%;border:1px solid var(--pur);background:var(--purfill);color:var(--pur3);cursor:pointer;display:flex;align-items:center;justify-content:center;flex:none}
+.mic.rec{background:var(--red);border-color:var(--red);color:#fff;animation:pulse 1s infinite}
+.orb{width:74px;height:74px;border-radius:50%;background:radial-gradient(circle at 35% 35%,#c3b1ff,#7c5cf0 45%,#1b1a44 75%);box-shadow:0 0 34px rgba(124,92,240,.6),inset 0 0 18px rgba(255,255,255,.25);animation:breathe 3.2s ease-in-out infinite;flex:none}
+.orb.talk{animation:breathe .5s ease-in-out infinite}
+@keyframes breathe{0%,100%{transform:scale(1)}50%{transform:scale(1.07)}}
+.qp{font:400 11px Poppins,sans-serif;color:var(--pur3);padding:6px 11px;border:1px dashed var(--pur);border-radius:16px;cursor:pointer;background:none;white-space:nowrap}
+.qp:hover{background:var(--purfill)}
+
+/* comms */
+.chcard{border:1px solid var(--bd2);border-radius:10px;background:var(--tile);padding:12px 13px;display:flex;flex-direction:column;gap:8px}
+.chcard .txt{font:400 11.5px/1.65 Poppins,sans-serif;color:var(--t2);white-space:pre-wrap;background:#081230;border:1px solid var(--rule);border-radius:7px;padding:9px 10px}
+.chico{width:24px;height:24px;border-radius:6px;display:flex;align-items:center;justify-content:center;font:700 11px Poppins,sans-serif;color:#fff;flex:none}
+
+/* portal (customer-facing light theme) */
+.browser{border-radius:12px;overflow:hidden;border:1px solid var(--outline);background:#fff}
+.browser-bar{background:#e8ebf2;padding:8px 12px;display:flex;align-items:center;gap:8px}
+.browser-bar i{width:10px;height:10px;border-radius:50%;display:inline-block}
+.browser-url{flex:1;background:#fff;border-radius:6px;padding:5px 10px;font:400 11px Poppins,sans-serif;color:#555}
+.pt{color:#1b2440;font-family:Poppins,sans-serif}
+.pt-hdr{background:#0b3d91;color:#fff;padding:14px 22px;display:flex;align-items:center;gap:12px}
+.pt-banner{padding:10px 22px;font:500 12px Poppins,sans-serif}
+.pt-body{padding:18px 22px;display:grid;grid-template-columns:1fr 1.2fr;gap:18px}
+.pt-card{border:1px solid #dde3ef;border-radius:10px;padding:14px 16px;background:#fff}
+.pt input{width:100%;padding:10px 12px;border:1px solid #c6cfe1;border-radius:8px;font:400 12.5px Poppins,sans-serif;color:#1b2440}
+.pt-btn{background:#0b3d91;color:#fff;border:0;border-radius:8px;padding:10px 16px;font:500 12px Poppins,sans-serif;cursor:pointer}
+.pt .map{height:330px;border-radius:10px}
+
+.toast{position:fixed;right:22px;bottom:22px;z-index:3000;display:flex;flex-direction:column;gap:9px;align-items:flex-end}
+.toast>div{background:var(--card);border:1px solid var(--bd);border-left:3px solid var(--green);border-radius:9px;padding:11px 15px;box-shadow:0 14px 34px rgba(0,0,0,.6);font:400 11.5px Poppins,sans-serif;color:var(--t2);max-width:400px;animation:slide .28s ease}
+@keyframes slide{from{opacity:0;transform:translateY(10px)}to{opacity:1;transform:none}}
+.fade{animation:fade .3s ease}
+@keyframes fade{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:none}}
+@media (max-width:1250px){.kpis{grid-template-columns:repeat(3,1fr)}.grid3{grid-template-columns:1fr}.row.wrap{flex-direction:column}}
+</style>
+</head>
+<body>
+<div class="app">
+  <aside class="sidebar">
+    <div class="brand">
+      <img src="https://d7umqicpi7263.cloudfront.net/img/product/f93e9a80-bf37-4444-9934-14f54d16daef.com/3b20a3af2ab95662337f13eca910ef71" alt="PowerConnect" onerror="this.style.display='none'">
+      <div>
+        <div class="brand-name">OMS<span>360</span></div>
+      </div>
+    </div>
+    <nav class="nav" id="nav"></nav>
+    <div class="sb-foot">
+      <div class="sb-user">
+        <div class="avatar">DW</div>
+        <div style="flex:1;min-width:0">
+          <div style="font:500 11.5px Poppins,sans-serif;color:var(--t2)">Dana Whitaker</div>
+          <div style="font:300 9.5px Poppins,sans-serif;color:var(--t4)">VP, Storm Operations</div>
+        </div>
+      </div>
+      <div class="sb-org">
+        <div style="width:18px;height:18px;border-radius:5px;background:linear-gradient(135deg,#2b6bff,#3ec46d);flex:none"></div>
+        <div style="flex:1;min-width:0">
+          <div style="font:500 10.5px Poppins,sans-serif;color:var(--t2)">Bayview Power &amp; Water</div>
+          <div style="font:300 9px Poppins,sans-serif;color:var(--t4)">Hillsborough County, FL</div>
+        </div>
+      </div>
+    </div>
+  </aside>
+
+  <div class="main">
+    <header class="topbar">
+      <div class="topbar-row">
+        <div style="min-width:0">
+          <h1 id="pgTitle">Command Center</h1>
+          <div class="sub" id="pgSub"></div>
+        </div>
+        <div class="topbar-actions">
+          <span class="livetag" id="wxTag" title="Live weather feed"><i></i><span id="wxTagTxt">Live weather…</span></span>
+          <span class="simtag" title="Hurricane Kyle is a simulated storm for this demo">Simulation · Hurricane Kyle</span>
+          <button class="btn btn-warn" id="playBtn">▶ Play storm</button>
+          <button class="btn btn-ai" data-nav="jarvis">✦ Ask Jarvis</button>
+        </div>
+      </div>
+      <div class="timeline" id="timeline"></div>
+    </header>
+    <div class="content" id="view"></div>
+  </div>
+</div>
+<div class="toast" id="toast"></div>
+
+<script>
+/* ===================================================================
+   OMS360 prototype
+   Single file, no build step. Map: Leaflet (cdnjs). Weather: live
+   OpenWeather (with key) or Open-Meteo (keyless). Storm is simulated.
+   =================================================================== */
+const $  = (s, r=document) => r.querySelector(s);
+const $$ = (s, r=document) => Array.from(r.querySelectorAll(s));
+const esc = s => String(s).replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+const fmt = n => Math.round(n).toLocaleString('en-US');
+const pct = (n, d=0) => (n*100).toFixed(d) + '%';
+const sum = (a, f) => a.reduce((s, x) => s + f(x), 0);
+const stripTags = h => h.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim();
+const store = {
+  get(k){ try { return localStorage.getItem(k); } catch(e){ return null; } },
+  set(k, v){ try { localStorage.setItem(k, v); } catch(e){} }
+};
+
+function toast(msg, kind='ok'){
+  const el = document.createElement('div');
+  el.style.borderLeftColor = {ok:'var(--green)', ai:'var(--pur)', bad:'var(--red)', info:'var(--blue)', warn:'var(--amber)'}[kind];
+  el.innerHTML = msg;
+  $('#toast').appendChild(el);
+  setTimeout(()=>{ el.style.transition='opacity .3s'; el.style.opacity='0'; setTimeout(()=>el.remove(), 320); }, 4200);
+}
+
+const ICONS = {
+  command:'<path d="M3 13h8V3H3v10zm10 8h8V11h-8v10zM3 21h8v-6H3v6zM13 9h8V3h-8v6z"/>',
+  storm:'<path d="M20 12a8 8 0 01-8 8c-2 0-3.5-.6-5-1.7"/><path d="M4 12a8 8 0 018-8c2 0 3.5.6 5 1.7"/><circle cx="12" cy="12" r="3"/>',
+  predict:'<path d="M3 17l6-6 4 4 8-8"/><path d="M21 7v5h-5"/>',
+  crews:'<path d="M2 18h20M4 18V9l4-3 4 3v9M12 18v-6h8v6M7 12h2"/>',
+  restore:'<path d="M13 2L3 14h8l-1 8 10-12h-8z"/>',
+  comms:'<path d="M21 15a2 2 0 01-2 2H7l-4 4V5a2 2 0 012-2h14a2 2 0 012 2z"/><path d="M8 9h8M8 13h5"/>',
+  portal:'<rect x="2" y="4" width="20" height="16" rx="2"/><path d="M2 9h20M6 6.5h.01M9 6.5h.01"/>',
+  jarvis:'<path d="M12 2l1.9 4.6L18.5 8l-4.6 1.9L12 14l-1.9-4.1L5.5 8l4.6-1.4z"/><path d="M18 15l.9 2.1L21 18l-2.1.9L18 21l-.9-2.1L15 18l2.1-.9z"/>',
+  settings:'<circle cx="12" cy="12" r="3"/><path d="M12 1v3M12 20v3M4.2 4.2l2.1 2.1M17.7 17.7l2.1 2.1M1 12h3M20 12h3M4.2 19.8l2.1-2.1M17.7 6.3l2.1-2.1"/>',
+  mic:'<rect x="9" y="2" width="6" height="12" rx="3"/><path d="M5 10a7 7 0 0014 0M12 17v5M8 22h8"/>',
+  send:'<path d="M22 2L11 13M22 2l-7 20-4-9-9-4z"/>'
+};
+const icon = (k, cls='ic', st='') => `<svg class="${cls}" style="${st}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">${ICONS[k]||''}</svg>`;
+
+/* ===================================================================
+   DATA — fictional utility "Bayview Power & Water", Hillsborough Co.
+   =================================================================== */
+const ZONES = [
+  {id:'tpa', code:'TPA', name:'Tampa (Downtown / South)', short:'Tampa',          lat:27.9420, lng:-82.4700, cust:196000, water:52000, vuln:.95, coastal:true, crit:true},
+  {id:'tnc', code:'TNC', name:"Town 'n' Country",         short:"Town 'n' Country",lat:28.0106, lng:-82.5773, cust:62000,  water:18000, vuln:.90, coastal:true},
+  {id:'wch', code:'WCH', name:'Westchase',                short:'Westchase',      lat:28.0550, lng:-82.6093, cust:31000,  water:9000,  vuln:.70},
+  {id:'cwd', code:'CWD', name:'Carrollwood',              short:'Carrollwood',    lat:28.0500, lng:-82.4926, cust:48000,  water:14000, vuln:.65, crit:true},
+  {id:'ltz', code:'LTZ', name:'Lutz',                     short:'Lutz',           lat:28.1511, lng:-82.4615, cust:24000,  water:6000,  vuln:.55},
+  {id:'ttr', code:'TTR', name:'Temple Terrace',           short:'Temple Terrace', lat:28.0353, lng:-82.3893, cust:29000,  water:9000,  vuln:.60},
+  {id:'brn', code:'BRN', name:'Brandon',                  short:'Brandon',        lat:27.9378, lng:-82.2859, cust:86000,  water:24000, vuln:.70, crit:true},
+  {id:'val', code:'VAL', name:'Valrico',                  short:'Valrico',        lat:27.9467, lng:-82.2437, cust:34000,  water:10000, vuln:.60},
+  {id:'plc', code:'PLC', name:'Plant City',               short:'Plant City',     lat:28.0186, lng:-82.1129, cust:41000,  water:12000, vuln:.50, crit:true},
+  {id:'rvv', code:'RVV', name:'Riverview',                short:'Riverview',      lat:27.8661, lng:-82.3265, cust:72000,  water:20000, vuln:.80},
+  {id:'apb', code:'APB', name:'Apollo Beach',             short:'Apollo Beach',   lat:27.7731, lng:-82.4076, cust:22000,  water:6000,  vuln:1.00, coastal:true},
+  {id:'rsk', code:'RSK', name:'Ruskin',                   short:'Ruskin',         lat:27.7209, lng:-82.4332, cust:26000,  water:7000,  vuln:.95, coastal:true},
+  {id:'scc', code:'SCC', name:'Sun City Center',          short:'Sun City Center',lat:27.7181, lng:-82.3518, cust:21000,  water:6000,  vuln:.85, med:true}
+];
+const TOTAL_CUST = sum(ZONES, z=>z.cust);
+const TOTAL_WATER = sum(ZONES, z=>z.water);
+
+const FACILITIES = [
+  {n:'Tampa General Hospital',          t:'H', type:'Hospital',       lat:27.9373, lng:-82.4598, zone:'tpa', feeder:'FDR-TPA-01', backup:'96 h diesel'},
+  {n:"St. Joseph's Hospital",           t:'H', type:'Hospital',       lat:27.9806, lng:-82.4869, zone:'tpa', feeder:'FDR-TPA-04', backup:'72 h diesel'},
+  {n:'Brandon Regional Hospital',       t:'H', type:'Hospital',       lat:27.9373, lng:-82.2934, zone:'brn', feeder:'FDR-BRN-02', backup:'72 h diesel'},
+  {n:'South Florida Baptist Hospital',  t:'H', type:'Hospital',       lat:28.0136, lng:-82.1226, zone:'plc', feeder:'FDR-PLC-01', backup:'48 h diesel'},
+  {n:'North Regional Water Treatment',  t:'W', type:'Water plant',    lat:28.0640, lng:-82.4250, zone:'cwd', feeder:'FDR-CWD-03', backup:'Dual feed + 2 MW gen'},
+  {n:'South County Water Reclamation',  t:'W', type:'Water plant',    lat:27.7400, lng:-82.3900, zone:'rsk', feeder:'FDR-RSK-01', backup:'1.5 MW gen'},
+  {n:'County Emergency Operations Ctr', t:'E', type:'EOC',            lat:27.9640, lng:-82.3720, zone:'ttr', feeder:'FDR-TTR-02', backup:'Dual feed'},
+  {n:'Shelter — Brandon High School',   t:'S', type:'Shelter',        lat:27.9330, lng:-82.2800, zone:'brn', feeder:'FDR-BRN-05', backup:'None — portable gen'},
+  {n:'Shelter — Riverview High School', t:'S', type:'Shelter',        lat:27.8590, lng:-82.3180, zone:'rvv', feeder:'FDR-RVV-03', backup:'None — portable gen'},
+  {n:'Sun City Center medical cluster', t:'M', type:'Medical-needs',  lat:27.7150, lng:-82.3550, zone:'scc', feeder:'FDR-SCC-01', backup:'Mixed'}
+];
+const FAC_COLOR = {H:'#e0506a', W:'#2b9bff', E:'#f5a623', S:'#3ec46d', M:'#c3b1ff'};
+
+const YARDS = [
+  {n:'Stadium North Lot staging',     lat:27.9790, lng:-82.5030, cap:400},
+  {n:'Plant City Fairgrounds staging', lat:28.0146, lng:-82.1406, cap:650},
+  {n:'Brandon Service Center',         lat:27.9300, lng:-82.3100, cap:260},
+  {n:'Lutz Operations Yard',           lat:28.1400, lng:-82.4700, cap:220}
+];
+
+/* Simulated track for Hurricane Kyle: Gulf → landfall at mouth of Tampa Bay → inland NE */
+const TRACK = [[23.6,-86.4],[24.9,-85.6],[26.0,-84.7],[26.9,-83.8],[27.62,-82.72],[28.15,-81.95],[28.75,-81.05]];
+const TRACK_H = [-108,-72,-48,-24,0,24,48]; // hours vs landfall for each track point
+const LANDFALL = new Date(2026, 9, 6, 20, 0); // Tue Oct 6 2026, 8:00 PM ET (simulated)
+const CATF = {1:.07, 2:.17, 3:.33, 4:.52, 5:.74};
+const WIND_BY_CAT = {0:65, 1:85, 2:105, 3:120, 4:140, 5:165};
+const SURGE_BY_CAT = {1:'4–6 ft', 2:'6–9 ft', 3:'9–12 ft', 4:'12–16 ft', 5:'16–20 ft'};
+
+const PH = [
+  {key:'prep',    short:'T-72h', label:'Prepare',      h:-72, storm:1, status:'Hurricane Watch issued for Tampa Bay'},
+  {key:'pre',     short:'T-24h', label:'Pre-landfall', h:-24, storm:3, status:'Hurricane Warning in effect'},
+  {key:'impact',  short:'T-0',   label:'Landfall',     h:0,   storm:4, status:'Hurricane conditions — crews sheltered'},
+  {key:'restore', short:'T+24h', label:'Restore',      h:24,  storm:5, status:'All-clear for field work — restoration under way'},
+  {key:'recover', short:'T+72h', label:'Recover',      h:72,  storm:6, status:'Storm dissipated — final restoration & after-action'}
+];
+
+/* ===================================================================
+   STATE
+   =================================================================== */
+const S = {
+  screen:'command', phase:0, cat:3,
+  approved:new Set(), dismissed:new Set(),
+  published:false, pubZones:new Set(),
+  commsApproved:new Set(), commsCh:'all',
+  triggers:[true,true,true,true,true,false],
+  chat:[], voice:true, listening:false,
+  wx:null, owKey:store.get('oms360_owkey') || '', radar:false, owLayer:'precipitation_new',
+  portalZone:null, playing:null
+};
+
+/* ===================================================================
+   MODEL — one function drives every screen so numbers always agree
+   =================================================================== */
+const addH = (d, h) => new Date(Math.round((d.getTime() + h*3600e3)/1.8e6)*1.8e6);
+const fmtDT = d => d.toLocaleString('en-US', {weekday:'short', month:'short', day:'numeric', hour:'numeric', minute:'2-digit'});
+const fmtT  = d => d.toLocaleString('en-US', {weekday:'short', hour:'numeric', minute:'2-digit'});
+
+function stormNow(){
+  const p = S.phase;
+  if(p === 0) { const c = Math.max(1, S.cat-1); return {cat:c, wind:WIND_BY_CAT[c], press:978-c*5, label:'Category '+c, dist:'410 mi SSW of Tampa Bay', move:'NNE at 12 mph'}; }
+  if(p === 1) return {cat:S.cat, wind:WIND_BY_CAT[S.cat], press:975-S.cat*8, label:'Category '+S.cat, dist:'125 mi SW of Tampa Bay', move:'NE at 14 mph'};
+  if(p === 2) return {cat:S.cat, wind:WIND_BY_CAT[S.cat], press:976-S.cat*8, label:'Category '+S.cat+' — landfall', dist:'Mouth of Tampa Bay', move:'NE at 15 mph'};
+  if(p === 3) return {cat:0, wind:50, press:994, label:'Tropical Storm', dist:'Inland, 95 mi NE', move:'NE at 18 mph'};
+  return {cat:-1, wind:0, press:1012, label:'Post-tropical', dist:'Off the Atlantic coast', move:'—'};
+}
+
+function M(catOverride){
+  const cat = catOverride || S.cat, cf = CATF[cat], ph = PH[S.phase], hs = ph.h;
+  const zs = ZONES.map(z => ({z, pred: Math.round(z.cust * Math.min(.97, cf*z.vuln*1.15))}));
+  const predTotal = sum(zs, o=>o.pred);
+  const reqLine = Math.round(predTotal/185), reqTree = Math.round(reqLine*.45), reqDA = Math.max(20, Math.round(predTotal/2500));
+  const INT = {line:640, tree:180, da:40};
+  const mutualReq = Math.max(0, Math.round(reqLine*1.08) - INT.line);
+  const treeReq = Math.max(0, Math.round(reqTree*1.05) - INT.tree);
+  const daReq = Math.max(0, reqDA - INT.da);
+  const ma = S.approved.has('mutual');
+  const frac = ma ? [0,.62,.97,1,.45][S.phase] : [0,0,.12,.22,.1][S.phase];
+  const onLine = INT.line + Math.round(mutualReq*frac);
+  const onTree = INT.tree + Math.round(treeReq*frac);
+  const onDA = INT.da + Math.round(daReq*(ma?Math.min(1,frac+.2):frac));
+  const planLine = S.phase < 2 ? INT.line + (ma ? mutualReq : 0) : onLine;
+  const ratio = Math.min(1.1, planLine/Math.max(1, reqLine));
+  zs.forEach(o => {
+    const z = o.z;
+    let eta = (14 + cf*95*z.vuln - (z.crit?6:0)) / Math.pow(Math.min(1, ratio), .75);
+    if(S.approved.has('prioritize') && (z.id==='tpa' || z.id==='scc')) eta *= .82;
+    if(S.approved.has('reroute') && z.id==='rvv') eta *= .85;
+    o.eta = Math.max(12, Math.round(eta));
+    if(hs < 0) o.out = S.phase===1 ? Math.round(o.pred*.02*z.vuln) : 0;
+    else if(hs >= o.eta) o.out = Math.round(o.pred*.008);
+    else { const p = Math.max(0, (hs-10)/(o.eta-10)); o.out = Math.round(o.pred*.9*(1-Math.pow(p,.8))); }
+    o.restored = hs >= o.eta;
+    o.crews = Math.round(planLine * o.pred / predTotal);
+    o.etaDate = addH(LANDFALL, o.eta);
+    o.pctPred = o.pred / z.cust;
+    o.pctOut = o.out / z.cust;
+  });
+  const outNow = sum(zs, o=>o.out);
+  const avgEta = sum(zs, o=>o.eta*o.pred) / predTotal;
+  const p95 = Math.max(...zs.map(o=>o.eta));
+  const conf = Math.round(Math.min(95, 70 + S.phase*5 + (ratio>=.95?5:0) - (cat-3)*3));
+  const restoredPct = hs <= 0 ? 0 : 1 - outNow / Math.max(1, sum(zs, o=>o.pred*.9));
+  const critAtRisk = FACILITIES.filter(f => { const o = zs.find(x=>x.z.id===f.zone); return o.pctPred > .2; }).length;
+  const liftAtRisk = Math.round(412*Math.min(.6, cf*1.1));
+  const gensNeeded = Math.round(liftAtRisk*.6);
+  return {cat, cf, ph, hs, zs, predTotal, reqLine, reqTree, reqDA, INT, mutualReq, treeReq, daReq,
+          onLine, onTree, onDA, planLine, ratio, outNow, avgEta, p95, conf, restoredPct, critAtRisk,
+          liftAtRisk, gensNeeded, ma};
+}
+
+function readiness(){
+  const prep = ['mutual','stage','comms','medical','generators','materials','eoc'];
+  return Math.min(98, 46 + prep.filter(a=>S.approved.has(a)).length*7 + (S.phase>=1?4:0));
+}
+
+/* Feeders — power-law distribution gives the 80/20 Pareto shape */
+function feeders(m){
+  const order = m.zs.slice().sort((a,b)=>b.pred-a.pred);
+  const raw = Array.from({length:40}, (_, i) => 1/Math.pow(i+1, 1.38));
+  const tot = sum(raw, x=>x);
+  const counters = {};
+  return raw.map((r, i) => {
+    const o = order[i % order.length];
+    counters[o.z.code] = (counters[o.z.code]||0) + 1;
+    return {name:`FDR-${o.z.code}-${String(counters[o.z.code]).padStart(2,'0')}`, zone:o.z.short, cust:Math.round(m.predTotal*r/tot)};
+  });
+}
+
+/* ===================================================================
+   AI ACTIONS — the CEO "what do we have to do" list, per phase
+   =================================================================== */
+const ACTIONS = [
+  {id:'mutual', ph:[0,1], pri:'Critical', nav:'crews',
+   title:m=>`Request ${fmt(m.mutualReq)} mutual-aid line workers + ${fmt(m.treeReq)} tree crew workers`,
+   detail:m=>`Model needs ${fmt(m.reqLine)} line workers for a Cat ${m.cat} landfall; you have ${fmt(m.INT.line)} in-house. Requests must go out 48–72 h before landfall for crews to arrive in time.`,
+   impact:m=>`Cuts average restoration time by ~${Math.round((1-Math.pow(Math.min(1,m.INT.line/m.reqLine),.75))*100)}%`,
+   why:m=>`Predicted peak is ${fmt(m.predTotal)} customers out. Historically one line worker restores ~185 customers across a storm event in this territory (Irma 2017, Ian 2022, Milton 2024 back-tests). ${fmt(m.reqLine)} needed ÷ ${fmt(m.INT.line)} on hand = ${(m.reqLine/m.INT.line).toFixed(1)}× shortfall.`},
+  {id:'stage', ph:[0,1], pri:'High', nav:'crews',
+   title:()=>`Pre-stage crews & trucks at 4 inland staging yards`,
+   detail:()=>`Plant City Fairgrounds, Stadium North Lot, Brandon Service Center, Lutz Ops Yard — all outside surge zones A/B.`,
+   impact:()=>`Crews on site 6–9 h faster after the all-clear`,
+   why:()=>`Staging yards were selected outside the predicted surge envelope and within 25 minutes of the five highest-impact zones. Yard capacity (1,530) covers the full mutual-aid request.`},
+  {id:'comms', ph:[0,1], pri:'High', nav:'comms',
+   title:()=>`Approve pre-storm customer campaign (5 channels)`,
+   detail:()=>`AI-drafted X, Facebook, SMS, email and IVR messages are ready for review.`,
+   impact:()=>`Reaches ${fmt(TOTAL_CUST)} customers · historically −30% inbound calls`,
+   why:()=>`Utilities that warn customers 48–72 h ahead see fewer "is my power out?" calls and higher sign-ups for outage texts, which then power the automated ETR updates.`},
+  {id:'medical', ph:[0,1], pri:'Critical', nav:'comms',
+   title:()=>`Contact 1,240 medical-needs customers (outbound call + SMS)`,
+   detail:()=>`Life-support and oxygen customers concentrated in Sun City Center, Apollo Beach and Brandon.`,
+   impact:()=>`Moves vulnerable customers to shelters before landfall`,
+   why:()=>`These customers have registered life-support equipment. 62% are inside zones with > 40% predicted outage probability.`},
+  {id:'generators', ph:[0,1], pri:'High', nav:'predict',
+   title:m=>`Fuel & deploy ${m.gensNeeded} portable generators to water lift stations`,
+   detail:m=>`${m.liftAtRisk} of 412 lift stations lack backup power in predicted outage zones.`,
+   impact:()=>`Avoids sewer overflows & boil-water notices`,
+   why:m=>`Lift stations without power overflow within ~6 h. Placing ${m.gensNeeded} generators at the highest-flow stations protects ~${fmt(m.gensNeeded*1900)} water customers.`},
+  {id:'materials', ph:[0], pri:'Medium', nav:'crews',
+   title:m=>`Order materials: ${fmt(m.predTotal/110)} poles, ${fmt(m.predTotal/330)} transformers`,
+   detail:()=>`Current inventory covers ~35% of predicted need. Vendors need 48 h lead time.`,
+   impact:()=>`Prevents a materials bottleneck on day 2–3`,
+   why:()=>`Pole and transformer usage per 1,000 customers out comes from the last three major storms in the territory.`},
+  {id:'eoc', ph:[1], pri:'High', nav:'command',
+   title:()=>`Activate Emergency Operations Center — Level 1`,
+   detail:()=>`Opens 24/7 storm desk, logistics and liaison to County EOC.`,
+   impact:()=>`Single command structure through landfall`,
+   why:()=>`Forecast sustained winds exceed the Level-1 activation threshold (74 mph) for the service territory.`},
+  {id:'shelter', ph:[2], pri:'Critical', nav:'crews',
+   title:()=>`Hold all crews sheltered — auto-release when winds < 39 mph`,
+   detail:()=>`Forecast all-clear: ~10 h after landfall (Wed 6:00 AM).`,
+   impact:()=>`Crew safety — OSHA bucket-truck limits`,
+   why:()=>`Bucket trucks cannot operate above 39 mph sustained. The model will release crews automatically by zone as live wind readings drop.`},
+  {id:'assess', ph:[2], pri:'High', nav:'comms',
+   title:m=>`Publish "outage confirmed — assessment pending" to ${fmt(m.outNow)} customers`,
+   detail:()=>`Website banner + SMS to affected meters (AMI last-gasp signals).`,
+   impact:()=>`Sets expectations before ETRs exist`,
+   why:()=>`AMI meters have reported last-gasp signals. Proactive notice prevents call-center overload while crews are sheltered.`},
+  {id:'publish', ph:[3], pri:'Critical', nav:'restore',
+   title:()=>`Publish AI restoration times for all ${ZONES.length} zones to the website`,
+   detail:m=>`Confidence ${m.conf}%. Customers see a specific time instead of "multiple days".`,
+   impact:()=>`Triggers SMS updates to every affected customer`,
+   why:m=>`ETRs combine crews assigned per zone (${fmt(m.planLine)} line workers in total), damage type (surge vs wind), critical-facility priority and live restoration rate. Back-tested ETR error: ±2.1 h.`},
+  {id:'prioritize', ph:[3], pri:'High', nav:'restore',
+   title:()=>`Prioritise hospital & medical-needs feeders (FDR-TPA-01, FDR-SCC-01)`,
+   detail:()=>`Tampa General is on backup diesel (96 h). Sun City Center has 410 medical-needs customers out.`,
+   impact:()=>`Tampa & Sun City Center ETR −18%`,
+   why:()=>`Critical-facility rules rank hospitals and life-support customers first. Re-sequencing moves 38 crews without delaying any other zone by more than 2 h.`},
+  {id:'reroute', ph:[3], pri:'Medium', nav:'crews',
+   title:()=>`Re-route 60 mutual-aid workers from Lutz → Riverview`,
+   detail:()=>`Lutz is 82% restored; Riverview has the largest remaining backlog.`,
+   impact:()=>`Riverview ETR −15%`,
+   why:()=>`Live restoration rate in Lutz is ahead of plan; Riverview is behind. Balancing crews minimises the time to 95% restored across the territory.`},
+  {id:'verify', ph:[4], pri:'High', nav:'comms',
+   title:()=>`Send "Still out? Reply OUT" verification SMS to restored areas`,
+   detail:()=>`Finds nested outages (single services) the OMS cannot see.`,
+   impact:()=>`Typically surfaces 1–2% hidden outages`,
+   why:()=>`After major storms, individual service drops stay dark even when the feeder is restored. Customer replies create OMS tickets automatically.`},
+  {id:'release', ph:[4], pri:'Medium', nav:'crews',
+   title:m=>`Release ${fmt(m.mutualReq*.5)} mutual-aid workers`,
+   detail:()=>`Remaining backlog can be cleared by in-house crews within 36 h.`,
+   impact:m=>`Saves ~$${fmt(m.mutualReq*.5*4200/1000)}k per day`,
+   why:()=>`Released crews are sequenced so they finish in-progress work first. Cost per mutual-aid worker incl. lodging ≈ $4,200/day.`},
+  {id:'aar', ph:[4], pri:'Medium', nav:'jarvis',
+   title:()=>`Generate after-action report & regulator filing`,
+   detail:()=>`Timeline, ETR accuracy, customer comms, costs — draft for PSC filing.`,
+   impact:()=>`Saves ~2 weeks of manual compilation`,
+   why:()=>`All storm data is already in OMS360: decisions, approvals, ETR history and messages sent.`}
+];
+const phaseActions = () => ACTIONS.filter(a => a.ph.includes(S.phase) && !S.dismissed.has(a.id));
+const pendingActions = () => phaseActions().filter(a => !S.approved.has(a.id));
+
+function approveAction(id){
+  const a = ACTIONS.find(x=>x.id===id); if(!a) return;
+  const m = M();
+  S.approved.add(id);
+  if(id==='publish'){ S.published = true; ZONES.forEach(z=>S.pubZones.add(z.id)); }
+  if(id==='comms'){ ['x','fb','sms','email','ivr'].forEach(c=>S.commsApproved.add(PH[S.phase].key+'-'+c)); }
+  toast(`✓ Approved: ${stripTags(a.title(m))}`);
+  refresh();
+}
+
+/* ===================================================================
+   CHARTS (inline SVG)
+   =================================================================== */
+function lineChart(series, labels, opts={}){
+  const w = opts.w || 860, h = opts.h || 200, pl = 40, pb = 22, pt = 12;
+  const max = opts.max || Math.max(1, ...series.flatMap(s => s.data.filter(v=>v!=null))) * 1.12;
+  const x = i => pl + i * ((w - pl - 10) / Math.max(1, labels.length - 1));
+  const y = v => pt + (h - pt - pb) * (1 - v / max);
+  const grid = [0,.25,.5,.75,1].map(f => {
+    const gy = pt + (h-pt-pb)*f;
+    return `<line x1="${pl}" y1="${gy}" x2="${w-10}" y2="${gy}" stroke="#14204a"/><text x="${pl-7}" y="${gy+3}" text-anchor="end" fill="#4d5a86" font-size="9" font-family="Poppins">${opts.yfmt ? opts.yfmt(max*(1-f)) : Math.round(max*(1-f))}</text>`;
+  }).join('');
+  const vline = opts.vline != null ? `<line x1="${x(opts.vline)}" y1="${pt}" x2="${x(opts.vline)}" y2="${h-pb}" stroke="#f5a623" stroke-dasharray="3 3"/><text x="${x(opts.vline)+4}" y="${pt+9}" fill="#f0d7a8" font-size="9" font-family="Poppins">${opts.vlabel||'Now'}</text>` : '';
+  const hline = opts.hline != null ? `<line x1="${pl}" y1="${y(opts.hline)}" x2="${w-10}" y2="${y(opts.hline)}" stroke="#e0506a" stroke-dasharray="4 3"/><text x="${w-12}" y="${y(opts.hline)-4}" text-anchor="end" fill="#ffb3c2" font-size="9" font-family="Poppins">${opts.hlabel||''}</text>` : '';
+  const paths = series.map(s => {
+    const pts = s.data.map((v,i)=>v==null?null:[x(i),y(v)]).filter(Boolean);
+    if(!pts.length) return '';
+    const d = pts.map((p,i)=>`${i?'L':'M'}${p[0].toFixed(1)},${p[1].toFixed(1)}`).join(' ');
+    const area = s.fill ? `<path d="${d} L${pts[pts.length-1][0]},${h-pb} L${pts[0][0]},${h-pb} Z" fill="${s.fill}"/>` : '';
+    return `${area}<path d="${d}" fill="none" stroke="${s.color}" stroke-width="${s.w||2}" stroke-dasharray="${s.dash||''}" stroke-linejoin="round"/>`;
+  }).join('');
+  const xl = labels.map((l,i)=>l?`<text x="${x(i).toFixed(1)}" y="${h-6}" text-anchor="middle" fill="#5d6a94" font-size="9" font-family="Poppins">${l}</text>`:'').join('');
+  return `<svg viewBox="0 0 ${w} ${h}" style="width:100%;height:auto;display:block">${grid}${hline}${paths}${vline}${xl}</svg>`;
+}
+
+function paretoChart(fd){
+  const w = 1400, h = 260, pl = 46, pr = 40, pb = 40, pt = 12;
+  const max = fd[0].cust * 1.1, tot = sum(fd, f=>f.cust);
+  const bw = (w-pl-pr)/fd.length;
+  let cum = 0;
+  const cumPts = fd.map((f,i)=>{ cum += f.cust; return [pl+i*bw+bw/2, pt+(h-pt-pb)*(1-cum/tot)]; });
+  const cut = Math.round(fd.length*.2);
+  const bars = fd.map((f,i)=>{
+    const bh = (h-pt-pb)*f.cust/max;
+    return `<rect x="${(pl+i*bw+bw*.15).toFixed(1)}" y="${(h-pb-bh).toFixed(1)}" width="${(bw*.7).toFixed(1)}" height="${bh.toFixed(1)}" rx="2" fill="${i<cut?'#e0506a':'#24356e'}"><title>${f.name} · ${f.zone} · ${fmt(f.cust)} customers</title></rect>`
+      + (i<cut ? `<text transform="translate(${(pl+i*bw+bw/2).toFixed(1)},${h-pb+8}) rotate(50)" fill="#8a96c0" font-size="9" font-family="Poppins">${f.name}</text>` : '');
+  }).join('');
+  const cutX = pl + cut*bw;
+  const cumAtCut = sum(fd.slice(0,cut), f=>f.cust)/tot;
+  return `<svg viewBox="0 0 ${w} ${h}" style="width:100%;height:auto;display:block">
+    ${[0,.5,1].map(f=>`<line x1="${pl}" y1="${pt+(h-pt-pb)*f}" x2="${w-pr}" y2="${pt+(h-pt-pb)*f}" stroke="#14204a"/><text x="${pl-6}" y="${pt+(h-pt-pb)*f+3}" text-anchor="end" fill="#4d5a86" font-size="9" font-family="Poppins">${fmt(max*(1-f))}</text><text x="${w-pr+5}" y="${pt+(h-pt-pb)*f+3}" fill="#c3b1ff" font-size="9" font-family="Poppins">${Math.round(100*(1-f))}%</text>`).join('')}
+    <rect x="${pl}" y="${pt}" width="${cutX-pl}" height="${h-pt-pb}" fill="rgba(224,80,106,.06)"/>
+    ${bars}
+    <path d="${cumPts.map((p,i)=>`${i?'L':'M'}${p[0].toFixed(1)},${p[1].toFixed(1)}`).join(' ')}" fill="none" stroke="#c3b1ff" stroke-width="2"/>
+    <line x1="${cutX}" y1="${pt}" x2="${cutX}" y2="${h-pb}" stroke="#f5a623" stroke-dasharray="3 3"/>
+    <text x="${cutX+6}" y="${pt+12}" fill="#f0d7a8" font-size="10" font-family="Poppins" font-weight="600">Top 20% of feeders → ${Math.round(cumAtCut*100)}% of impact</text>
+  </svg>`;
+}
+
+function donut(p, color, label, sub, size=96){
+  const r = 34, c = 2*Math.PI*r;
+  return `<svg viewBox="0 0 90 90" style="width:${size}px;height:${size}px;flex:none">
+    <circle cx="45" cy="45" r="${r}" fill="none" stroke="#12224f" stroke-width="10"/>
+    <circle cx="45" cy="45" r="${r}" fill="none" stroke="${color}" stroke-width="10" stroke-linecap="round" stroke-dasharray="${(c*p/100).toFixed(1)} ${c}" transform="rotate(-90 45 45)"/>
+    <text x="45" y="45" text-anchor="middle" fill="#eaf0ff" font-size="17" font-weight="600" font-family="Poppins">${label}</text>
+    <text x="45" y="58" text-anchor="middle" fill="#7c88b2" font-size="7.5" font-family="Poppins">${sub}</text></svg>`;
+}
+
+function kpi(k, v, cls, s, nav){
+  return `<div class="tile kpi${nav?' clickable':''}"${nav?` data-nav="${nav}"`:''}><div class="k">${k}</div><div class="v num ${cls||''}">${v}</div><div class="s">${s||''}</div></div>`;
+}
+const why = t => `<details class="why"><summary>Why this recommendation?</summary><p>${esc(t)}</p></details>`;
+const sevColor = v => v < .08 ? '#3ec46d' : v < .2 ? '#f5a623' : v < .4 ? '#f07a2e' : '#e0506a';
+
+/* ===================================================================
+   MAPS (Leaflet with offline SVG fallback)
+   =================================================================== */
+let MAPS = [];
+function clearMaps(){ MAPS.forEach(m=>{ try{ m.remove(); }catch(e){} }); MAPS = []; }
+
+function makeMap(id, opts={}){
+  const el = document.getElementById(id);
+  if(!el) return null;
+  if(!window.L){ el.innerHTML = svgFallbackMap(opts); return null; }
+  const m = L.map(el, {zoomControl:true, scrollWheelZoom:false, attributionControl:true}).setView(opts.center || [27.94,-82.38], opts.zoom || 10);
+  // Esri canvas basemaps — free, no API key, work from file:// as well as https://
+  const tone = opts.light ? 'Light' : 'Dark';
+  const esri = s => `https://server.arcgisonline.com/ArcGIS/rest/services/Canvas/World_${tone}_Gray_${s}/MapServer/tile/{z}/{y}/{x}`;
+  const base = L.tileLayer(esri('Base'), {attribution:'Tiles © Esri — Esri, HERE, Garmin, © OpenStreetMap', maxZoom:16}).addTo(m);
+  L.tileLayer(esri('Reference'), {maxZoom:16, opacity:.8}).addTo(m);
+  let failed = 0;
+  base.on('tileerror', () => {
+    if(++failed === 6){ // provider unreachable → fall back to OpenStreetMap
+      m.removeLayer(base);
+      L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', {attribution:'© OpenStreetMap contributors', maxZoom:19, className:opts.light?'':'osm-dark'}).addTo(m).bringToBack();
+    }
+  });
+  if(S.owKey && S.radar && opts.radar){
+    L.tileLayer(`https://tile.openweathermap.org/map/${S.owLayer}/{z}/{x}/{y}.png?appid=${encodeURIComponent(S.owKey)}`, {opacity:.75, attribution:'Weather © OpenWeather'}).addTo(m);
+  }
+  MAPS.push(m);
+  setTimeout(()=>m.invalidateSize(), 60);
+  return m;
+}
+
+function addZones(map, m, mode, noLabels){
+  if(!map) return;
+  m.zs.forEach(o=>{
+    const v = mode==='pred' ? o.pctPred : (S.phase<2 ? o.pctPred : o.pctOut);
+    const col = (mode!=='pred' && o.restored) ? '#3ec46d' : sevColor(v);
+    const c = L.circle([o.z.lat, o.z.lng], {radius:Math.sqrt(o.z.cust)*15, color:col, weight:1.5, fillColor:col, fillOpacity:.32}).addTo(map);
+    c.bindPopup(`<b>${o.z.name}</b><br>${fmt(o.z.cust)} electric · ${fmt(o.z.water)} water customers<br>
+      Predicted peak out: <b>${fmt(o.pred)}</b> (${pct(o.pctPred)})<br>
+      ${S.phase>=2?`Out now: <b>${fmt(o.out)}</b><br>`:''}
+      Crews planned: <b>${o.crews}</b> line workers<br>
+      AI ETR: <b>${o.restored?'Restored':fmtDT(o.etaDate)}</b>${o.z.coastal?'<br><span style="color:#f0d7a8">Storm-surge zone</span>':''}`);
+    if(!noLabels) c.bindTooltip(o.z.short, {permanent:true, direction:'center', className:'zlabel'});
+  });
+}
+function addStorm(map, opts={}){
+  if(!map) return;
+  const idx = PH[S.phase].storm;
+  L.polyline(TRACK.slice(0, idx+1), {color:'#ffffff', weight:2.5, opacity:.9}).addTo(map);
+  L.polyline(TRACK.slice(idx), {color:'#f5a623', weight:2.5, dashArray:'6 6', opacity:.95}).addTo(map);
+  if(S.phase < 4){
+    TRACK.slice(idx+1).forEach((p, i) => L.circle(p, {radius:30000 + i*30000, stroke:false, fillColor:'#ffffff', fillOpacity:.07}).addTo(map));
+    TRACK.slice(idx+1).forEach((p, i) => L.circleMarker(p, {radius:4, color:'#f5a623', fillColor:'#040a1f', fillOpacity:1, weight:2}).bindTooltip('Forecast · '+fmtDT(addH(LANDFALL, TRACK_H[idx+1+i]))).addTo(map));
+  }
+  const pos = TRACK[idx], sn = stormNow();
+  if(S.phase < 4){
+    L.circle(pos, {radius:sn.cat>=3?95000:70000, color:'#f5a623', weight:1, fillColor:'#f5a623', fillOpacity:.08, dashArray:'4 4'}).addTo(map);
+    L.circle(pos, {radius:sn.cat>=3?40000:28000, color:'#e0506a', weight:1, fillColor:'#e0506a', fillOpacity:.12}).addTo(map);
+  }
+  L.marker(pos, {icon:L.divIcon({className:'', html:'<div class="hurr">🌀</div>', iconSize:[30,30], iconAnchor:[15,15]})})
+    .bindPopup(`<b>Hurricane Kyle</b> (simulated)<br>${sn.label}<br>Max sustained: ${sn.wind} mph<br>Pressure: ${sn.press} mb<br>${sn.dist}`).addTo(map);
+}
+function addFacilities(map){
+  if(!map) return;
+  FACILITIES.forEach(f=>{
+    L.marker([f.lat, f.lng], {icon:L.divIcon({className:'', html:`<div class="fac" style="background:${FAC_COLOR[f.t]}">${f.t}</div>`, iconSize:[20,20], iconAnchor:[10,10]})})
+      .bindPopup(`<b>${f.n}</b><br>${f.type} · feeder ${f.feeder}<br>Backup: ${f.backup}`).addTo(map);
+  });
+}
+function addYards(map){
+  if(!map) return;
+  YARDS.forEach(y=>{
+    L.marker([y.lat, y.lng], {icon:L.divIcon({className:'', html:`<div class="fac" style="background:#2b6bff;border-radius:50%">Y</div>`, iconSize:[20,20], iconAnchor:[10,10]})})
+      .bindPopup(`<b>${y.n}</b><br>Capacity: ${y.cap} workers<br>${S.approved.has('stage')?'<span style="color:#3ec46d">Staged ✓</span>':'<span style="color:#f0d7a8">Not yet staged</span>'}`).addTo(map);
+  });
+}
+function svgFallbackMap(){
+  const m = M(), W = 800, H = 430, b = {n:28.25, s:27.62, w:-82.75, e:-82.0};
+  const px = (lat,lng) => [ (lng-b.w)/(b.e-b.w)*W, (b.n-lat)/(b.n-b.s)*H ];
+  return `<svg viewBox="0 0 ${W} ${H}" style="width:100%;height:100%;background:#071027">
+    <path d="M0 ${H*.55} Q ${W*.25} ${H*.5} ${W*.33} ${H*.62} L ${W*.38} ${H} L 0 ${H} Z" fill="#0b1d45"/>
+    ${m.zs.map(o=>{ const [x,y]=px(o.z.lat,o.z.lng); const r=Math.sqrt(o.z.cust)/13; const col=sevColor(S.phase<2?o.pctPred:o.pctOut);
+      return `<circle cx="${x}" cy="${y}" r="${r}" fill="${col}" fill-opacity=".35" stroke="${col}"/><text x="${x}" y="${y+3}" text-anchor="middle" fill="#eaf0ff" font-size="10" font-family="Poppins">${o.z.short}</text>`; }).join('')}
+    <text x="12" y="20" fill="#7c88b2" font-size="10" font-family="Poppins">Offline map (map tiles unavailable)</text></svg>`;
+}
+const mapLegend = () => `<div class="map-legend legend">
+  <span><i class="sw" style="background:#3ec46d"></i>&lt;8%</span><span><i class="sw" style="background:#f5a623"></i>8–20%</span>
+  <span><i class="sw" style="background:#f07a2e"></i>20–40%</span><span><i class="sw" style="background:#e0506a"></i>&gt;40% out</span>
+  <span><i class="sw" style="background:#e0506a;border-radius:3px"></i>H hospital</span><span><i class="sw" style="background:#2b9bff"></i>W water</span><span><i class="sw" style="background:#2b6bff;border-radius:50%"></i>Y staging</span></div>`;
+
+/* ===================================================================
+   LIVE WEATHER — OpenWeather (key) or Open-Meteo (keyless fallback)
+   =================================================================== */
+const TPA = {lat:27.9506, lon:-82.4572};
+const WMO = {0:'Clear',1:'Mainly clear',2:'Partly cloudy',3:'Overcast',45:'Fog',48:'Fog',51:'Light drizzle',53:'Drizzle',55:'Heavy drizzle',61:'Light rain',63:'Rain',65:'Heavy rain',80:'Rain showers',81:'Rain showers',82:'Violent showers',95:'Thunderstorm',96:'Thunderstorm, hail',99:'Thunderstorm, hail'};
+
+async function fetchWeather(){
+  try{
+    if(S.owKey){
+      const k = encodeURIComponent(S.owKey);
+      const [cur, fc] = await Promise.all([
+        fetch(`https://api.openweathermap.org/data/2.5/weather?lat=${TPA.lat}&lon=${TPA.lon}&units=imperial&appid=${k}`).then(r=>{ if(!r.ok) throw new Error('OpenWeather '+r.status); return r.json(); }),
+        fetch(`https://api.openweathermap.org/data/2.5/forecast?lat=${TPA.lat}&lon=${TPA.lon}&units=imperial&appid=${k}`).then(r=>r.ok?r.json():null)
+      ]);
+      S.wx = {src:'OpenWeather', temp:cur.main.temp, hum:cur.main.humidity, press:cur.main.pressure, wind:cur.wind.speed, gust:cur.wind.gust||cur.wind.speed,
+        desc:cur.weather[0].description.replace(/^./, c=>c.toUpperCase()), at:new Date(),
+        hourly: fc ? fc.list.slice(0,16).map(i=>({t:new Date(i.dt*1000), gust:i.wind.gust||i.wind.speed, pop:Math.round((i.pop||0)*100)})) : []};
+    } else {
+      const url = `https://api.open-meteo.com/v1/forecast?latitude=${TPA.lat}&longitude=${TPA.lon}&current=temperature_2m,relative_humidity_2m,pressure_msl,wind_speed_10m,wind_gusts_10m,weather_code&hourly=wind_gusts_10m,precipitation_probability&wind_speed_unit=mph&temperature_unit=fahrenheit&forecast_days=3&timezone=America%2FNew_York`;
+      const d = await fetch(url).then(r=>{ if(!r.ok) throw new Error('Open-Meteo '+r.status); return r.json(); });
+      const c = d.current, now = Date.now();
+      const hourly = d.hourly.time.map((t,i)=>({t:new Date(t), gust:d.hourly.wind_gusts_10m[i], pop:d.hourly.precipitation_probability[i]})).filter(x=>x.t.getTime() >= now-3600e3).filter((_,i)=>i%3===0).slice(0,16);
+      S.wx = {src:'Open-Meteo', temp:c.temperature_2m, hum:c.relative_humidity_2m, press:c.pressure_msl, wind:c.wind_speed_10m, gust:c.wind_gusts_10m, desc:WMO[c.weather_code]||'—', at:new Date(), hourly};
+    }
+    $('#wxTagTxt').textContent = `Tampa ${Math.round(S.wx.temp)}°F · wind ${Math.round(S.wx.wind)} mph`;
+    $('#wxTag').title = 'Live weather via ' + S.wx.src;
+  } catch(e){
+    S.wx = {err:String(e.message||e)};
+    $('#wxTagTxt').textContent = 'Live weather unavailable';
+  }
+  if(S.screen==='storm' || S.screen==='settings') refresh();
+}
+
+/* ===================================================================
+   ROUTER / CHROME
+   =================================================================== */
+const NAV = [
+  {id:'command', label:'Command Center',      icon:'command'},
+  {id:'storm',   label:'Storm & Weather',     icon:'storm'},
+  {id:'predict', label:'Outage Prediction',   icon:'predict'},
+  {id:'crews',   label:'Crews & Resources',   icon:'crews'},
+  {id:'restore', label:'Restoration & ETR',   icon:'restore'},
+  {id:'comms',   label:'Comms & Campaigns',   icon:'comms'},
+  {id:'portal',  label:'Customer Outage Map', icon:'portal'},
+  {id:'jarvis',  label:'Jarvis AI',           icon:'jarvis'},
+  {id:'settings',label:'Settings',            icon:'settings'}
+];
+const META = {
+  command:{t:'Command Center', s:'What we need to do, right now — AI-prioritised for the storm phase'},
+  storm:{t:'Storm & Weather Intelligence', s:'Track, intensity and live weather for the service territory'},
+  predict:{t:'Outage Prediction', s:'AI model: weather × grid assets × vegetation × history → predicted outages'},
+  crews:{t:'Crews & Resources', s:'AI resource planning — how many people, where, and when'},
+  restore:{t:'Restoration & AI ETR', s:'Precise, explainable restoration times — published to the website'},
+  comms:{t:'Communications & Campaigns', s:'AI-drafted, phase-aware messages across every channel'},
+  portal:{t:'Customer Outage Map (public website preview)', s:'What Bayview customers see at bayviewpw.example/outages'},
+  jarvis:{t:'Jarvis — AI Storm Assistant', s:'Ask anything. Type or talk.'},
+  settings:{t:'Settings & Integrations', s:'Weather data, system integrations and AI policy'}
+};
+const SCREENS = {}, WIRE = {};
+
+function renderChrome(){
+  const n = pendingActions().length;
+  $('#nav').innerHTML = `<div class="nav-label">Storm Operations</div>` + NAV.map((it,i)=>{
+    const sep = i===7 ? `<div class="nav-label">Intelligence</div>` : i===8 ? `<div class="nav-label">Admin</div>` : '';
+    const badge = it.id==='command' && n ? `<span class="count">${n}</span>` : '';
+    return sep + `<button class="nav-item${it.id==='jarvis'?' jv':''}${S.screen===it.id?' on':''}" data-nav="${it.id}">${icon(it.icon)}<span>${it.label}</span>${badge}</button>`;
+  }).join('');
+  $('#timeline').innerHTML = PH.map((p,i)=>`<button class="tl-step${i<S.phase?' done':''}${i===S.phase?' on':''}" data-phase="${i}">
+      <div class="tl-bar"></div><div class="tl-lbl"><b>${p.short}</b>${p.label} · ${fmtT(addH(LANDFALL, p.h))}</div></button>`).join('');
+}
+
+function navigate(id){
+  if(!SCREENS[id]) return;
+  S.screen = id;
+  $('#pgTitle').textContent = META[id].t;
+  $('#pgSub').textContent = META[id].s;
+  clearMaps();
+  const v = $('#view');
+  v.innerHTML = SCREENS[id]();
+  v.classList.remove('fade'); void v.offsetWidth; v.classList.add('fade');
+  renderChrome();
+  if(WIRE[id]) WIRE[id]();
+}
+function refresh(){ const y = window.scrollY; navigate(S.screen); window.scrollTo(0, y); }
+
+function setPhase(i){
+  S.phase = Math.max(0, Math.min(PH.length-1, i));
+  if(S.phase < 3){ S.published = false; S.pubZones.clear(); }
+  refresh();
+}
+
+document.addEventListener('click', e=>{
+  const n = e.target.closest('[data-nav]'); if(n){ navigate(n.dataset.nav); window.scrollTo(0,0); return; }
+  const p = e.target.closest('[data-phase]'); if(p){ stopPlay(); setPhase(Number(p.dataset.phase)); toast(`Storm phase → <b>${PH[S.phase].short} · ${PH[S.phase].label}</b>`, 'warn'); return; }
+  const a = e.target.closest('[data-approve]'); if(a){ approveAction(a.dataset.approve); return; }
+  const d = e.target.closest('[data-dismiss]'); if(d){ S.dismissed.add(d.dataset.dismiss); toast('Recommendation dismissed.', 'info'); refresh(); return; }
+  const q = e.target.closest('[data-ask]'); if(q){ ask(q.dataset.ask); return; }
+});
+
+function stopPlay(){ if(S.playing){ clearInterval(S.playing); S.playing = null; $('#playBtn').innerHTML = '▶ Play storm'; } }
+$('#playBtn').addEventListener('click', ()=>{
+  if(S.playing){ stopPlay(); return; }
+  if(S.phase >= PH.length-1) setPhase(0);
+  $('#playBtn').innerHTML = '❚❚ Pause';
+  S.playing = setInterval(()=>{
+    if(S.phase >= PH.length-1){ stopPlay(); return; }
+    setPhase(S.phase+1);
+    toast(`Storm phase → <b>${PH[S.phase].short} · ${PH[S.phase].label}</b> · ${PH[S.phase].status}`, 'warn');
+  }, 7000);
+});
+
+/* ===================================================================
+   SCREEN: COMMAND CENTER
+   =================================================================== */
+function stormBanner(m){
+  const sn = stormNow(), ph = PH[S.phase];
+  const hrs = -ph.h;
+  return `<div class="card" style="border-color:${S.phase<=2?'var(--amberbd)':'var(--bd)'}">
+    <div class="card-b" style="display:flex;gap:18px;align-items:center;flex-wrap:wrap">
+      <div style="font-size:42px;line-height:1" class="hurr">🌀</div>
+      <div style="flex:1;min-width:260px">
+        <div style="display:flex;align-items:center;gap:9px;flex-wrap:wrap">
+          <span style="font:600 18px Poppins,sans-serif;color:var(--t1)">Hurricane Kyle</span>
+          <span class="tag ${sn.cat>=3?'tag-bad':sn.cat>=1?'tag-warn':'tag-sk'}">${sn.label}</span>
+          <span class="tag tag-warn">${ph.status}</span>
+        </div>
+        <div class="muted" style="font:300 11.5px Poppins,sans-serif;margin-top:6px">
+          ${sn.wind?`Max winds <b style="color:var(--t2)">${sn.wind} mph</b> · `:''}Pressure ${sn.press} mb · ${sn.dist} · Moving ${sn.move}
+          ${S.phase<2?` · Landfall forecast <b style="color:var(--amber2)">${fmtDT(LANDFALL)}</b> (in ${hrs} h) as <b style="color:var(--amber2)">Cat ${S.cat}</b> · Surge ${SURGE_BY_CAT[S.cat]}`:''}
+        </div>
+      </div>
+      <div style="display:flex;gap:14px;align-items:center">
+        ${donut(readiness(), readiness()>=80?'#3ec46d':readiness()>=65?'#f5a623':'#e0506a', readiness()+'%', 'readiness', 84)}
+        ${S.phase>=2 ? donut(Math.round(m.restoredPct*100), '#2b6bff', Math.round(m.restoredPct*100)+'%', 'restored', 84) : donut(m.conf, '#7c5cf0', m.conf+'%', 'model conf.', 84)}
+      </div>
+    </div></div>`;
+}
+
+SCREENS.command = function(){
+  const m = M(), acts = phaseActions();
+  const pre = S.phase < 2;
+  return `<div class="stack">
+    ${stormBanner(m)}
+    <div class="kpis">
+      ${pre ? kpi('Predicted peak outages', fmt(m.predTotal), 'neg', `${pct(m.predTotal/TOTAL_CUST)} of ${fmt(TOTAL_CUST)} customers`, 'predict')
+            : kpi('Customers out now', fmt(m.outNow), m.outNow>50000?'neg':'warnc', `peak ${fmt(m.predTotal*.9)} · ${pct(m.restoredPct)} restored`, 'restore')}
+      ${kpi('Line workers', `${fmt(pre?m.planLine:m.onLine)}<span class="muted" style="font-size:13px"> / ${fmt(m.reqLine)}</span>`, (pre?m.planLine:m.onLine)>=m.reqLine*.95?'pos':'neg', pre?(m.ma?'mutual aid committed':'in-house only — gap '+fmt(m.reqLine-m.INT.line)):'on hand vs required', 'crews')}
+      ${kpi('Avg AI restoration', Math.round(m.avgEta)+' h', m.avgEta<48?'pos':m.avgEta<80?'warnc':'neg', '95% restored by '+fmtT(addH(LANDFALL, m.p95)), 'restore')}
+      ${kpi('Critical facilities at risk', String(m.critAtRisk), m.critAtRisk?'neg':'pos', 'hospitals, water, shelters', 'predict')}
+      ${kpi('Water lift stations at risk', String(m.liftAtRisk), 'warnc', `${S.approved.has('generators')?m.gensNeeded+' generators deployed':'of 412 · no backup power'}`, 'predict')}
+      ${kpi('Customer comms', S.commsApproved.size ? `${S.commsApproved.size}<span class="muted" style="font-size:13px"> live</span>` : '0', S.commsApproved.size?'pos':'warnc', S.commsApproved.size?'campaign messages approved':'nothing sent yet', 'comms')}
+    </div>
+    <div class="row wrap" style="align-items:stretch">
+      <div class="card" style="flex:1.55;min-width:0">
+        <div class="card-h"><h3>Service territory</h3><span class="hint">${pre?'Predicted outage % by zone':'Live outage % by zone'} · storm track · critical facilities</span><div style="flex:1"></div><button class="btn btn-sm" data-nav="storm">Open storm view</button></div>
+        <div style="position:relative"><div id="cmdMap" class="map" style="height:470px"></div>${mapLegend()}</div>
+      </div>
+      <div class="card ai-panel" style="flex:1;min-width:340px;display:flex;flex-direction:column">
+        <div class="card-h" style="border-color:var(--purbd)"><div class="ai-glyph">${icon('jarvis')}</div><h3 style="color:var(--pur3)">What we need to do — ${PH[S.phase].label}</h3><div style="flex:1"></div><span class="tag tag-ai">${pendingActions().length} pending</span></div>
+        <div class="card-b stack" style="gap:9px;overflow-y:auto;max-height:470px">
+          ${acts.length ? acts.map(a=>actionCard(a,m)).join('') : '<div class="empty">No open actions for this phase.</div>'}
+        </div>
+      </div>
+    </div>
+    <div class="row wrap" style="align-items:stretch">
+      <div class="card" style="flex:1.2">
+        <div class="card-h"><h3>Zones by impact</h3><span class="hint">AI prediction · Cat ${S.cat}</span><div style="flex:1"></div><button class="btn btn-sm" data-nav="restore">All ETRs</button></div>
+        <table class="tbl"><thead><tr><th>Zone</th><th class="n">Customers</th><th class="n">${pre?'Predicted out':'Out now'}</th><th style="width:120px"></th><th>AI ETR</th></tr></thead><tbody>
+          ${m.zs.slice().sort((a,b)=>(pre?b.pred-a.pred:b.out-a.out)).slice(0,7).map(o=>{
+            const v = pre?o.pctPred:o.pctOut;
+            return `<tr><td>${o.z.name}${o.z.coastal?' <span class="tag tag-info">surge</span>':''}</td><td class="n">${fmt(o.z.cust)}</td><td class="n" style="color:${sevColor(v)};font-weight:600">${fmt(pre?o.pred:o.out)}</td>
+            <td><div class="meter"><i style="width:${Math.min(100,v*100/.8)}%;background:${sevColor(v)}"></i></div></td>
+            <td>${o.restored?'<span class="tag tag-ok">Restored</span>':fmtT(o.etaDate)}</td></tr>`; }).join('')}
+        </tbody></table>
+      </div>
+      <div class="card ai-panel" style="flex:1;display:flex;flex-direction:column">
+        <div class="card-h" style="border-color:var(--purbd)"><div class="orb" style="width:26px;height:26px"></div><h3 style="color:var(--pur3)">Jarvis</h3><span class="hint">Ask the command center</span><div style="flex:1"></div><button class="btn btn-sm btn-ai" data-nav="jarvis">Full screen</button></div>
+        <div class="card-b" style="display:flex;flex-direction:column;gap:10px;flex:1">
+          <div class="chat" id="miniChat" style="max-height:230px;min-height:150px">${chatHtml(4)}</div>
+          ${chatInput('mini')}
+          <div style="display:flex;gap:6px;flex-wrap:wrap">${['Do I need more people?','What should we do first?','When will Brandon be restored?'].map(q=>`<button class="qp" data-ask="${q}">${q}</button>`).join('')}</div>
+        </div>
+      </div>
+    </div>
+  </div>`;
+};
+function actionCard(a, m){
+  const done = S.approved.has(a.id);
+  return `<div class="action ${a.pri}${done?' done':''}">
+    <div style="display:flex;gap:8px;align-items:flex-start">
+      <span class="tag ${a.pri==='Critical'?'tag-bad':a.pri==='High'?'tag-warn':'tag-sk'}">${a.pri}</span>
+      <div style="flex:1;font:500 12px/1.45 Poppins,sans-serif;color:var(--t1)">${a.title(m)}</div>
+    </div>
+    <div class="muted" style="font:300 10.5px/1.6 Poppins,sans-serif;margin-top:6px">${a.detail(m)}</div>
+    <div style="font:500 10.5px Poppins,sans-serif;color:var(--pur2);margin-top:6px">↗ ${a.impact(m)}</div>
+    ${why(a.why(m))}
+    <div style="display:flex;gap:7px;justify-content:flex-end;margin-top:8px">
+      ${done ? '<span class="tag tag-ok">Approved ✓</span>' : `<button class="btn btn-sm" data-nav="${a.nav}">Details</button><button class="btn btn-sm" data-dismiss="${a.id}">Dismiss</button><button class="btn btn-sm btn-primary" data-approve="${a.id}">Approve</button>`}
+    </div></div>`;
+}
+WIRE.command = function(){
+  const m = M(), map = makeMap('cmdMap', {zoom:10, center:[27.9,-82.42], radar:true});
+  addZones(map, m); addStorm(map); addFacilities(map); addYards(map);
+  wireChat('mini');
+};
+
+/* ===================================================================
+   SCREEN: STORM & WEATHER
+   =================================================================== */
+SCREENS.storm = function(){
+  const sn = stormNow(), wx = S.wx;
+  const hrs = Array.from({length:21}, (_,i)=>-72+i*6);
+  const tpaWind = hrs.map(h => { const peak = WIND_BY_CAT[S.cat]*.78; return Math.round(h<-24? 8+ (h+72)*.25 : h<0 ? 20 + (h+24)/24*(peak-20) : h<10 ? peak*(1-h/14) : Math.max(8, peak*(1-h/14)*.5 + 6)); });
+  const rain = hrs.map(h => h<-24?0: h<12 ? Math.round(Math.max(0, 1.6 - Math.abs(h)/12)*10)/10 : 0);
+  return `<div class="stack">
+    ${stormBanner(M())}
+    <div class="row wrap" style="align-items:stretch">
+      <div class="card" style="flex:1.7;min-width:0">
+        <div class="card-h"><h3>Track & forecast cone</h3><span class="hint">Solid = observed · dashed = forecast · rings = hurricane / tropical-storm wind field</span><div style="flex:1"></div>
+          ${S.owKey ? `<select class="field" id="owLayer">${[['precipitation_new','Radar / precipitation'],['wind_new','Wind'],['clouds_new','Clouds'],['pressure_new','Pressure']].map(([v,l])=>`<option value="${v}" ${S.owLayer===v?'selected':''}>${l}</option>`).join('')}</select>
+          <button class="btn btn-sm ${S.radar?'btn-ok':''}" id="radarBtn">${S.radar?'Live overlay ON':'Live overlay OFF'}</button>` : `<button class="btn btn-sm" data-nav="settings">Add OpenWeather key for live radar</button>`}
+        </div>
+        <div style="position:relative"><div id="stormMap" class="map" style="height:660px"></div>${mapLegend()}</div>
+      </div>
+      <div class="stack" style="flex:1;min-width:300px">
+        <div class="card">
+          <div class="card-h"><h3>Live conditions · Tampa</h3><div style="flex:1"></div>${wx&&!wx.err?`<span class="livetag"><i></i>${wx.src}</span>`:''}</div>
+          <div class="card-b">
+            ${!wx ? '<div class="empty">Loading live weather…</div>' : wx.err ? `<div class="muted" style="font:300 11px Poppins">Live weather unavailable (${esc(wx.err)}). Check your connection or OpenWeather key in Settings.</div>` : `
+            <div style="display:flex;align-items:baseline;gap:10px"><span class="num" style="font-size:30px">${Math.round(wx.temp)}°F</span><span class="muted" style="font:400 12px Poppins">${esc(wx.desc)}</span></div>
+            <div class="grid2" style="gap:8px;margin-top:10px">
+              <div class="tile" style="padding:8px 10px"><div class="dim" style="font:300 9px Poppins">WIND</div><div class="num-sm">${Math.round(wx.wind)} mph</div></div>
+              <div class="tile" style="padding:8px 10px"><div class="dim" style="font:300 9px Poppins">GUSTS</div><div class="num-sm">${Math.round(wx.gust)} mph</div></div>
+              <div class="tile" style="padding:8px 10px"><div class="dim" style="font:300 9px Poppins">HUMIDITY</div><div class="num-sm">${Math.round(wx.hum)}%</div></div>
+              <div class="tile" style="padding:8px 10px"><div class="dim" style="font:300 9px Poppins">PRESSURE</div><div class="num-sm">${Math.round(wx.press)} mb</div></div>
+            </div>
+            ${wx.hourly && wx.hourly.length ? `<div class="sec-label" style="margin:12px 0 4px">Next 48 h · gusts (mph) & rain chance</div>
+              ${lineChart([{data:wx.hourly.map(h=>h.gust), color:'#6f9dff', w:2, fill:'rgba(43,107,255,.1)'},{data:wx.hourly.map(h=>h.pop), color:'#3ec46d', w:1.5, dash:'3 3'}], wx.hourly.map((h,i)=>i%4===0?h.t.toLocaleString('en-US',{weekday:'short',hour:'numeric'}):''), {h:150, w:520, max:100})}` : ''}
+            <div class="muted" style="font:300 9.5px Poppins;margin-top:6px">Updated ${wx.at.toLocaleTimeString('en-US',{hour:'numeric',minute:'2-digit'})} · real weather feed, independent of the simulated storm</div>`}
+          </div>
+        </div>
+        <div class="card">
+          <div class="card-h"><h3>Kyle — key parameters</h3><span class="tag tag-ai" style="margin-left:auto">model input</span></div>
+          <div class="card-b stack" style="gap:7px;font:400 11.5px Poppins">
+            ${[['Intensity at landfall',`Cat ${S.cat} · ${WIND_BY_CAT[S.cat]} mph`],['Storm surge (Tampa Bay)',SURGE_BY_CAT[S.cat]],['Rainfall',`${4+S.cat*2}–${7+S.cat*3} in`],['Hurricane-force wind radius',`${15+S.cat*8} mi`],['Tropical-storm wind radius',`${80+S.cat*25} mi`],['Soil saturation','High (wet September)'],['Landfall',fmtDT(LANDFALL)]]
+              .map(([k,v])=>`<div style="display:flex;justify-content:space-between;border-bottom:1px solid var(--rule);padding-bottom:6px"><span class="muted">${k}</span><b style="color:var(--t2);font-weight:500">${v}</b></div>`).join('')}
+          </div>
+        </div>
+      </div>
+    </div>
+    <div class="card">
+      <div class="card-h"><h3>Forecast sustained wind & rainfall — Tampa</h3><span class="hint">Hours relative to landfall · crews cannot work above 39 mph</span><div style="flex:1"></div>
+        <div class="legend"><span><i class="sw" style="background:#f5a623"></i>Wind (mph)</span><span><i class="sw" style="background:#2b9bff"></i>Rain (in/h ×20)</span></div></div>
+      <div class="card-b">${lineChart([{data:tpaWind, color:'#f5a623', w:2.4, fill:'rgba(245,166,35,.08)'},{data:rain.map(r=>r*20), color:'#2b9bff', w:1.8, dash:'4 3'}], hrs.map(h=>h%12===0?(h>0?'+':'')+h+'h':''), {vline:(PH[S.phase].h+72)/6, hline:39, hlabel:'39 mph crew safety limit', vlabel:PH[S.phase].short, w:1400, h:230})}</div>
+    </div>
+  </div>`;
+};
+WIRE.storm = function(){
+  const map = makeMap('stormMap', {zoom:7, center:[26.6,-83.9], radar:true});
+  addStorm(map); addZones(map, M(), null, true);
+  const rb = $('#radarBtn'); if(rb) rb.addEventListener('click', ()=>{ S.radar = !S.radar; refresh(); });
+  const ol = $('#owLayer'); if(ol) ol.addEventListener('change', e=>{ S.owLayer = e.target.value; S.radar = true; refresh(); });
+};
+
+/* ===================================================================
+   SCREEN: OUTAGE PREDICTION
+   =================================================================== */
+SCREENS.predict = function(){
+  const m = M(), fd = feeders(m), cut = Math.round(fd.length*.2);
+  const top = sum(fd.slice(0,cut), f=>f.cust)/m.predTotal;
+  return `<div class="stack">
+    <div class="card ai-panel">
+      <div class="card-b" style="display:flex;gap:22px;align-items:center;flex-wrap:wrap">
+        <div style="flex:1;min-width:280px">
+          <div class="sec-label" style="color:var(--pur2)">Scenario — intensity at landfall</div>
+          <div style="display:flex;align-items:center;gap:14px;margin-top:10px">
+            <input type="range" min="1" max="5" step="1" value="${S.cat}" id="catSlider" style="flex:1">
+            <span class="num" style="min-width:80px;color:${S.cat>=4?'var(--red)':S.cat>=3?'var(--amber2)':'var(--t1)'}">Cat ${S.cat}</span>
+          </div>
+          <div style="display:flex;justify-content:space-between;font:300 9.5px Poppins;color:var(--t4);margin-top:4px;padding-right:94px"><span>Cat 1</span><span>Cat 2</span><span>Cat 3</span><span>Cat 4</span><span>Cat 5</span></div>
+        </div>
+        <div class="muted" style="flex:1;min-width:280px;font:300 11px/1.7 Poppins">Move the slider — every screen (crews, ETRs, comms, Jarvis) recalculates. Model inputs: NHC-style forecast wind & surge, live weather, GIS asset age & pole class, vegetation density, soil saturation, and damage from <b style="color:var(--t2)">Irma (2017), Ian (2022), Milton (2024)</b>.</div>
+      </div>
+    </div>
+    <div class="kpis">
+      ${kpi('Predicted peak outages', fmt(m.predTotal), 'neg', pct(m.predTotal/TOTAL_CUST)+' of customers')}
+      ${kpi('Peak time', fmtT(addH(LANDFALL,3)), '', '~3 h after landfall')}
+      ${kpi('Model confidence', m.conf+'%', 'aic', 'back-tested MAPE 11%')}
+      ${kpi('Time to 95% restored', Math.round(m.p95/24*10)/10+' days', m.p95<72?'warnc':'neg', m.ma?'with mutual aid':'in-house crews only')}
+      ${kpi('Critical facilities at risk', String(m.critAtRisk), 'neg', 'of '+FACILITIES.length+' monitored')}
+      ${kpi('Water customers at risk', fmt(sum(m.zs,o=>o.z.water*o.pctPred)), 'warnc', m.liftAtRisk+' lift stations')}
+    </div>
+    <div class="row wrap" style="align-items:stretch">
+      <div class="card" style="flex:1.3;min-width:0">
+        <div class="card-h"><h3>Predicted outage probability by zone</h3><span class="hint">click a zone for details</span></div>
+        <div style="position:relative"><div id="predMap" class="map" style="height:500px"></div>${mapLegend()}</div>
+      </div>
+      <div class="card" style="flex:1;min-width:340px">
+        <div class="card-h"><h3>Predicted impact by zone</h3></div>
+        <table class="tbl"><thead><tr><th>Zone</th><th class="n">Out</th><th class="n">%</th><th>Driver</th></tr></thead><tbody>
+          ${m.zs.slice().sort((a,b)=>b.pred-a.pred).map(o=>`<tr><td>${o.z.short}</td><td class="n">${fmt(o.pred)}</td><td class="n" style="color:${sevColor(o.pctPred)};font-weight:600">${pct(o.pctPred)}</td>
+            <td class="muted" style="font-size:10.5px">${o.z.coastal?'Storm surge + wind':o.z.vuln>.75?'Wind + dense tree canopy':o.z.vuln>.6?'Wind + aging overhead lines':'Wind (mostly underground)'}</td></tr>`).join('')}
+        </tbody></table>
+      </div>
+    </div>
+    <div class="card">
+      <div class="card-h"><h3>80 / 20 — where to focus</h3><span class="hint">${fd.length} highest-risk feeders ranked by predicted customers out</span><div style="flex:1"></div><span class="tag tag-bad">Top ${cut} feeders = ${Math.round(top*100)}% of predicted impact</span></div>
+      <div class="card-b">${paretoChart(fd)}
+        <div class="ai-panel" style="padding:10px 12px;margin-top:10px;font:400 11.5px/1.7 Poppins;color:var(--pur3)"><b style="color:var(--pur2)">AI insight —</b> Pre-assigning crews and materials to the ${cut} red feeders (${fd.slice(0,4).map(f=>f.name).join(', ')} …) addresses ${Math.round(top*100)}% of predicted customer impact. Hardening and vegetation work on these feeders after the storm has the highest ROI.</div>
+      </div>
+    </div>
+    <div class="grid2">
+      <div class="card">
+        <div class="card-h"><h3>Critical facilities</h3><span class="hint">hospitals · water · EOC · shelters</span></div>
+        <table class="tbl"><thead><tr><th>Facility</th><th>Feeder</th><th>Risk</th><th>Backup</th></tr></thead><tbody>
+          ${FACILITIES.map(f=>{ const o = m.zs.find(x=>x.z.id===f.zone); const r = o.pctPred; return `<tr><td><span class="dot" style="background:${FAC_COLOR[f.t]};margin-right:6px"></span>${f.n}</td><td class="muted">${f.feeder}</td>
+            <td><span class="tag ${r>.4?'tag-bad':r>.2?'tag-warn':'tag-ok'}">${r>.4?'High':r>.2?'Medium':'Low'}</span></td><td class="muted" style="font-size:10.5px">${f.backup}</td></tr>`; }).join('')}
+        </tbody></table>
+      </div>
+      <div class="card">
+        <div class="card-h"><h3>Water system impact</h3><span class="tag tag-info" style="margin-left:auto">${fmt(TOTAL_WATER)} water customers</span></div>
+        <div class="card-b stack" style="gap:10px">
+          <div class="grid2" style="gap:9px">
+            <div class="tile" style="padding:10px 12px"><div class="dim" style="font:300 9px Poppins">LIFT STATIONS AT RISK</div><div class="num-sm warnc">${m.liftAtRisk} / 412</div></div>
+            <div class="tile" style="padding:10px 12px"><div class="dim" style="font:300 9px Poppins">GENERATORS NEEDED</div><div class="num-sm">${m.gensNeeded} ${S.approved.has('generators')?'<span class="tag tag-ok">deployed</span>':''}</div></div>
+            <div class="tile" style="padding:10px 12px"><div class="dim" style="font:300 9px Poppins">BOIL-WATER RISK ZONES</div><div class="num-sm neg">${m.zs.filter(o=>o.z.coastal && m.cat>=3).length || 'None'}</div></div>
+            <div class="tile" style="padding:10px 12px"><div class="dim" style="font:300 9px Poppins">TREATMENT PLANTS</div><div class="num-sm">2 <span class="muted" style="font-size:11px">· backup verified</span></div></div>
+          </div>
+          <div class="ai-panel" style="padding:10px 12px;font:400 11.5px/1.7 Poppins;color:var(--pur3)">${m.cat>=3?`Surge zones ${m.zs.filter(o=>o.z.coastal).map(o=>o.z.short).join(', ')} are likely to need precautionary boil-water notices. Templates are ready in Comms.`:`No boil-water notices expected at Cat ${m.cat}. Lift-station generators still recommended for coastal zones.`}</div>
+          ${S.approved.has('generators')||S.phase>1?'':`<div style="display:flex;justify-content:flex-end"><button class="btn btn-primary btn-sm" data-approve="generators">Deploy ${m.gensNeeded} generators</button></div>`}
+        </div>
+      </div>
+    </div>
+  </div>`;
+};
+WIRE.predict = function(){
+  const m = M(), map = makeMap('predMap', {zoom:10});
+  addZones(map, m, 'pred'); addFacilities(map);
+  $('#catSlider').addEventListener('input', e=>{ S.cat = Number(e.target.value); });
+  $('#catSlider').addEventListener('change', e=>{ S.cat = Number(e.target.value); refresh(); toast(`Scenario updated → <b>Cat ${S.cat}</b>. Predicted peak: ${fmt(M().predTotal)} customers.`, 'ai'); });
+};
+
+/* ===================================================================
+   SCREEN: CREWS & RESOURCES
+   =================================================================== */
+SCREENS.crews = function(){
+  const m = M(), pre = S.phase < 2;
+  const rows = [
+    ['Line workers', m.INT.line, m.mutualReq, m.reqLine, pre?m.planLine:m.onLine],
+    ['Vegetation / tree crew workers', m.INT.tree, m.treeReq, m.reqTree, pre?(m.INT.tree+(m.ma?m.treeReq:0)):m.onTree],
+    ['Damage assessors', m.INT.da, m.daReq, m.reqDA, pre?(m.INT.da+(m.ma?m.daReq:0)):m.onDA]
+  ];
+  const mats = [['Poles', m.predTotal/110, 640],['Transformers', m.predTotal/330, 260],['Conductor (miles)', m.predTotal/900, 120],['Bucket & digger trucks', m.reqLine/2.4, 290],['Hotel rooms / night', (m.mutualReq+m.treeReq)/2, 0],['Meals / day', (m.reqLine+m.reqTree)*3, 0]];
+  const days = ['Sat 3','Sun 4','Mon 5','Tue 6','Wed 7','Thu 8','Fri 9'];
+  const arrive = m.ma ? [0,.25,.6,.97,1,1,.45] : [0,0,0,.12,.22,.22,.1];
+  return `<div class="stack">
+    <div class="kpis">
+      ${kpi('Line workers required', fmt(m.reqLine), '', `AI model · Cat ${m.cat}`)}
+      ${kpi(pre?'Committed':'On hand', fmt(rows[0][4]), rows[0][4]>=m.reqLine*.95?'pos':'neg', pre?'in-house + confirmed mutual aid':'working in territory')}
+      ${kpi('Gap', fmt(Math.max(0,m.reqLine-rows[0][4])), m.reqLine-rows[0][4]>0?'neg':'pos', m.reqLine-rows[0][4]>0?'request mutual aid':'fully covered')}
+      ${kpi('Mutual aid', m.ma?fmt(m.mutualReq+m.treeReq+m.daReq):'0', m.ma?'pos':'warnc', m.ma?'requested via regional mutual-aid group':'not yet requested')}
+      ${kpi('Staging yards', S.approved.has('stage')?'4 / 4':'0 / 4', S.approved.has('stage')?'pos':'warnc', '1,530 worker capacity')}
+      ${kpi('Est. storm cost', '$'+(Math.round((m.mutualReq*4200*Math.max(3,m.avgEta/24)+m.predTotal*38)/1e5)/10)+'M', '', 'crews + materials + logistics')}
+    </div>
+    ${!m.ma && S.phase<3 ? `<div class="card ai-panel"><div class="card-b" style="display:flex;gap:14px;align-items:center;flex-wrap:wrap">
+      <div class="ai-glyph">${icon('jarvis')}</div>
+      <div style="flex:1;min-width:280px"><div style="font:500 13px Poppins;color:var(--pur3)">You need ${fmt(m.reqLine)} line workers for a Cat ${m.cat}. You have ${fmt(m.INT.line)}.</div>
+        <div class="muted" style="font:300 11px Poppins;margin-top:3px">Request ${fmt(m.mutualReq)} line + ${fmt(m.treeReq)} tree + ${fmt(m.daReq)} assessment workers now — crews from GA, AL, NC and TN need 36–60 h to arrive.</div></div>
+      <button class="btn btn-primary" data-approve="mutual">Request mutual aid</button></div></div>` : ''}
+    <div class="row wrap" style="align-items:stretch">
+      <div class="card" style="flex:1.2">
+        <div class="card-h"><h3>Workforce plan</h3><span class="hint">AI requirement vs supply</span></div>
+        <table class="tbl"><thead><tr><th>Resource</th><th class="n">In-house</th><th class="n">Mutual aid</th><th class="n">Required</th><th class="n">${pre?'Committed':'On hand'}</th><th class="n">Gap</th></tr></thead><tbody>
+          ${rows.map(r=>{ const gap = r[4]-r[3]; return `<tr><td>${r[0]}</td><td class="n">${fmt(r[1])}</td><td class="n aic">${m.ma?'+'+fmt(r[2]):'—'}</td><td class="n">${fmt(r[3])}</td><td class="n">${fmt(r[4])}</td><td class="n ${gap<0?'neg':'pos'}" style="font-weight:600">${gap<0?fmt(gap):'+'+fmt(gap)}</td></tr>`; }).join('')}
+        </tbody></table>
+        <div class="card-b">
+          <div class="sec-label" style="margin-bottom:8px">Mutual-aid arrival (line workers in territory)</div>
+          <div style="display:grid;grid-template-columns:repeat(7,1fr);gap:6px">
+            ${days.map((d,i)=>{ const n = Math.round(m.INT.line + m.mutualReq*arrive[i]); return `<div class="tile" style="padding:8px 6px;text-align:center;${i===3?'border-color:var(--amberbd);background:var(--amberfill)':''}">
+              <div class="muted" style="font:300 9.5px Poppins">${d}${i===3?' 🌀':''}</div><div style="font:600 13px Poppins;color:var(--t1);margin-top:2px">${fmt(n)}</div>
+              <div class="meter" style="margin-top:5px"><i style="width:${Math.min(100,n/m.reqLine*100)}%;background:${n>=m.reqLine*.95?'#3ec46d':'#f5a623'}"></i></div></div>`; }).join('')}
+          </div>
+          <div class="muted" style="font:300 10px Poppins;margin-top:8px">Shift plan: 16 h on / 8 h off, two rotations. Crews released from staging when sustained winds &lt; 39 mph.</div>
+        </div>
+      </div>
+      <div class="card" style="flex:1;min-width:0">
+        <div class="card-h"><h3>Staging & crew allocation</h3><div style="flex:1"></div>${S.approved.has('stage')?'<span class="tag tag-ok">Staged</span>':`<button class="btn btn-sm btn-primary" data-approve="stage" ${S.phase>1?'disabled':''}>Pre-stage crews</button>`}</div>
+        <div style="position:relative"><div id="crewMap" class="map" style="height:380px"></div></div>
+      </div>
+    </div>
+    <div class="grid2">
+      <div class="card">
+        <div class="card-h"><h3>Crew allocation by zone</h3><span class="hint">priority: critical facilities → largest customer count → fastest restorations</span></div>
+        <table class="tbl"><thead><tr><th>#</th><th>Zone</th><th class="n">Predicted out</th><th class="n">Line workers</th><th>Priority reason</th></tr></thead><tbody>
+          ${m.zs.slice().sort((a,b)=>(b.z.crit?1:0)-(a.z.crit?1:0) || b.pred-a.pred).map((o,i)=>`<tr><td class="muted">${i+1}</td><td>${o.z.short}</td><td class="n">${fmt(o.pred)}</td><td class="n" style="font-weight:600">${fmt(o.crews)}</td>
+            <td class="muted" style="font-size:10.5px">${o.z.crit?'Critical facility (hospital / water / EOC)':o.z.med?'Medical-needs density':o.pred>20000?'High customer count':'Standard'}</td></tr>`).join('')}
+        </tbody></table>
+      </div>
+      <div class="card">
+        <div class="card-h"><h3>Materials & logistics</h3><div style="flex:1"></div>${S.approved.has('materials')?'<span class="tag tag-ok">Ordered</span>':`<button class="btn btn-sm btn-primary" data-approve="materials" ${S.phase>0?'disabled':''}>Order shortfall</button>`}</div>
+        <table class="tbl"><thead><tr><th>Item</th><th class="n">Predicted need</th><th class="n">In stock</th><th style="width:130px">Coverage</th></tr></thead><tbody>
+          ${mats.map(([n,need,stock])=>{ const s = S.approved.has('materials')&&stock?need:stock; const c = stock? Math.min(1, s/need):null; return `<tr><td>${n}</td><td class="n">${fmt(need)}</td><td class="n">${stock?fmt(s):'—'}</td>
+            <td>${c==null?'<span class="muted" style="font-size:10.5px">Logistics vendor</span>':`<div class="meter"><i style="width:${c*100}%;background:${c>.9?'#3ec46d':c>.5?'#f5a623':'#e0506a'}"></i></div>`}</td></tr>`; }).join('')}
+        </tbody></table>
+      </div>
+    </div>
+  </div>`;
+};
+WIRE.crews = function(){
+  const m = M(), map = makeMap('crewMap', {zoom:10});
+  addZones(map, m); addYards(map);
+};
+
+/* ===================================================================
+   SCREEN: RESTORATION & AI ETR
+   =================================================================== */
+SCREENS.restore = function(){
+  const m = M(), pre = S.phase < 2;
+  const hours = Array.from({length:25}, (_,i)=>i*3);
+  const curve = hours.map(h => {
+    const restored = sum(m.zs, o => { if(h>=o.eta) return o.pred; const p = Math.max(0,(h-10)/(o.eta-10)); return o.pred*Math.pow(p,.8); });
+    return Math.round(restored / m.predTotal * 100);
+  });
+  const nowIdx = m.hs >= 0 ? Math.min(24, m.hs/3) : null;
+  const actual = nowIdx==null ? [] : curve.map((v,i)=> i<=nowIdx ? Math.max(0, v - (i>2?Math.round(3*Math.sin(i)):0)) : null);
+  return `<div class="stack">
+    <div class="kpis">
+      ${kpi(pre?'Predicted peak out':'Customers out now', fmt(pre?m.predTotal:m.outNow), 'neg', pre?'forecast':'live from OMS / AMI')}
+      ${kpi('Restored', pre?'—':pct(m.restoredPct), 'pos', pre?'restoration starts after all-clear':'of affected customers')}
+      ${kpi('Avg AI ETR', Math.round(m.avgEta)+' h', 'aic', 'after landfall, customer-weighted')}
+      ${kpi('95% restored by', fmtT(addH(LANDFALL,m.p95)), '', fmtDT(addH(LANDFALL,m.p95)).split(',')[1])}
+      ${kpi('ETR confidence', m.conf+'%', 'aic', 'improves as damage is assessed')}
+      ${kpi('Published to website', S.pubZones.size+' / '+ZONES.length, S.pubZones.size?'pos':'warnc', S.pubZones.size?'customers see exact times':'not published', 'portal')}
+    </div>
+    <div class="card">
+      <div class="card-h"><h3>Restoration curve</h3><span class="hint">% of affected customers restored · hours after landfall</span><div style="flex:1"></div>
+        <div class="legend"><span><i class="sw" style="background:#7c5cf0"></i>AI forecast</span><span><i class="sw" style="background:#3ec46d"></i>Actual</span></div></div>
+      <div class="card-b">${lineChart([{data:curve, color:'#7c5cf0', w:2, dash:'5 3', fill:'rgba(124,92,240,.07)'},{data:actual, color:'#3ec46d', w:2.6}], hours.map(h=>h%12===0?'+'+h+'h':''), {max:100, yfmt:v=>Math.round(v)+'%', vline:nowIdx, vlabel:PH[S.phase].short, w:1400, h:240})}</div>
+    </div>
+    <div class="card">
+      <div class="card-h"><h3>AI estimated restoration time by zone</h3><span class="hint">replaces "multiple days" with a specific, explainable time</span><div style="flex:1"></div>
+        ${S.phase>=3 ? (S.pubZones.size===ZONES.length ? '<span class="tag tag-ok">All zones published ✓</span>' : `<button class="btn btn-primary btn-sm" data-approve="publish">Publish all to website + SMS</button>`) : `<span class="tag tag-warn">Publishing unlocks after damage assessment (T+24h)</span>`}
+      </div>
+      <table class="tbl"><thead><tr><th>Zone</th><th class="n">Customers out</th><th class="n">Line workers</th><th>AI ETR</th><th class="n">Confidence</th><th>Drivers</th><th>Website</th></tr></thead><tbody>
+        ${m.zs.slice().sort((a,b)=>a.eta-b.eta).map(o=>{ const conf = Math.max(55, m.conf - Math.round(o.z.vuln*8) + (o.restored?10:0)); const pub = S.pubZones.has(o.z.id);
+          return `<tr><td>${o.z.name}</td><td class="n">${fmt(pre?o.pred:o.out)}${pre?'<span class="muted" style="font-size:9.5px"> pred.</span>':''}</td><td class="n">${fmt(o.crews)}</td>
+          <td>${o.restored?'<span class="tag tag-ok">Restored</span>':`<b style="color:var(--t1)">${fmtDT(o.etaDate)}</b>`}</td>
+          <td class="n"><span class="${conf>=85?'pos':conf>=70?'warnc':'neg'}">${Math.min(99,conf)}%</span></td>
+          <td class="muted" style="font-size:10.5px">${o.z.coastal?'Surge damage, ':'Wind/tree damage, '}${o.crews} line workers${o.z.crit?', hospital priority':''}${o.z.med?', medical-needs priority':''}</td>
+          <td>${S.phase>=3 ? `<button class="switch${pub?' on':''}" data-pub="${o.z.id}" title="Publish ETR to website"></button>` : '<span class="muted" style="font-size:10px">—</span>'}</td></tr>`; }).join('')}
+      </tbody></table>
+      <div class="card-b">${why(`Each ETR = remaining customers out ÷ (crews assigned × live restoration rate), adjusted for damage type (surge damage takes ~2.3× longer than wind damage), access (flooded roads), and priority rules (hospitals, water plants, medical-needs customers first). It updates every 15 minutes from OMS, AMI and crew GPS. Policy: a human must approve before ETRs go public.`)}</div>
+    </div>
+  </div>`;
+};
+WIRE.restore = function(){
+  $$('[data-pub]').forEach(el=>el.addEventListener('click', ()=>{
+    const id = el.dataset.pub;
+    if(S.pubZones.has(id)) S.pubZones.delete(id); else S.pubZones.add(id);
+    S.published = S.pubZones.size > 0;
+    toast(S.pubZones.has(id) ? `ETR for <b>${ZONES.find(z=>z.id===id).short}</b> published to website + SMS sent.` : 'ETR unpublished.', S.pubZones.has(id)?'ok':'info');
+    refresh();
+  }));
+};
+
+/* ===================================================================
+   SCREEN: COMMUNICATIONS & CAMPAIGNS
+   =================================================================== */
+const CH = [
+  {id:'x', n:'X / Twitter', c:'#000', l:'X'}, {id:'fb', n:'Facebook', c:'#1877f2', l:'f'},
+  {id:'sms', n:'SMS', c:'#3ec46d', l:'✉'}, {id:'email', n:'Email', c:'#f5a623', l:'@'}, {id:'ivr', n:'IVR / phone', c:'#7c5cf0', l:'☎'}
+];
+function templates(m){
+  const worst = m.zs.slice().sort((a,b)=>b.pred-a.pred).slice(0,3).map(o=>o.z.short).join(', ');
+  const etrs = m.zs.slice().sort((a,b)=>a.eta-b.eta);
+  const site = 'bayviewpw.example/outages';
+  const T = {
+    prep:{
+      x:`🌀 Hurricane Kyle is forecast to reach Tampa Bay as a Cat ${m.cat} on ${fmtT(LANDFALL)}. Our crews are preparing now. Charge devices, check generators safely, and sign up for outage texts → ${site} #KyleFL #BayviewReady`,
+      fb:`Hurricane Kyle update from Bayview Power & Water\n\nKyle is expected to make landfall near Tampa Bay ${fmtDT(LANDFALL)} as a Category ${m.cat} hurricane. Extended outages are possible, especially in ${worst}.\n\nWhat we're doing: requesting additional crews from out of state, staging trucks inland, and protecting water lift stations.\n\nWhat you can do: make a plan, charge devices, and text REG to 72990 for outage alerts.`,
+      sms:`Bayview: Hurricane Kyle may cause extended outages in your area from ${fmtT(LANDFALL)}. Prepare now. Use medical equipment? Reply MED. Report outages: text OUT. STOP to opt out.`,
+      email:`Subject: Prepare for Hurricane Kyle — what to expect from Bayview\n\nHurricane Kyle is forecast to reach Tampa Bay as a Category ${m.cat}. Based on our AI storm model, outages in ${worst} may last several days.\n\n• We are staging ${fmt(m.reqLine)} line workers\n• Restoration times will be posted for your address at ${site}\n• Never approach downed lines — call 911`,
+      ivr:`Thank you for calling Bayview Power and Water. Hurricane Kyle is expected to reach Tampa Bay ${fmtT(LANDFALL)}. Please prepare now. To register a medical need, press 1. For storm-preparation tips, press 2.`
+    },
+    pre:{
+      x:`⚠️ Hurricane Warning: Kyle (Cat ${m.cat}) landfall expected ~${fmtT(LANDFALL)}. ${fmt(m.reqLine)} line workers are staged and ready. We will restore power as soon as winds drop below 39 mph. Updates → ${site} #KyleFL`,
+      fb:`Hurricane Kyle is less than 24 hours away.\n\nOur crews — including line workers from 6 states — are staged at safe inland locations and will begin restoration as soon as it is safe.\n\nIf you lose power, you don't need to call: our smart meters tell us automatically. You'll receive a text with your estimated restoration time.`,
+      sms:`Bayview: Kyle landfall expected ~${fmtT(LANDFALL)}. Crews are staged. If your power goes out, our smart meters notify us automatically — we'll text your restoration time. Downed line? Call 911.`,
+      email:`Subject: Kyle is less than 24 hours away\n\nOur crews are staged and ready. Your smart meter will alert us automatically if you lose power. Restoration times for your address will be at ${site}.`,
+      ivr:`Hurricane Kyle is expected within 24 hours. Crews are staged and will begin restoration when it is safe. You do not need to report your outage; our smart meters notify us automatically.`
+    },
+    impact:{
+      x:`Kyle has made landfall. ~${fmt(m.outNow)} customers are without power. Crews are safe and will begin restoring as soon as sustained winds drop below 39 mph (est. ${fmtT(addH(LANDFALL,10))}). Stay off the roads. #KyleFL`,
+      fb:`Kyle has made landfall near Tampa Bay. Approximately ${fmt(m.outNow)} customers are currently without power.\n\nOur crews are sheltered for safety and will move out as soon as winds allow — estimated ${fmtT(addH(LANDFALL,10))}. Damage assessment will begin at first light.`,
+      sms:`Bayview: We know your power is out. Crews start as soon as it's safe (est. ${fmtT(addH(LANDFALL,10))}). Restoration time will follow after damage assessment. Downed line? Call 911.`,
+      email:`Subject: We know your power is out\n\nOur smart meters show your service is interrupted. Crews will begin restoration once winds drop below 39 mph. We will send your estimated restoration time after damage assessment.`,
+      ivr:`We are aware of widespread outages caused by Hurricane Kyle. There is no need to report your outage. Crews will begin work as soon as it is safe.`
+    },
+    restore:{
+      x:`⚡ ${pct(m.restoredPct)} of customers affected by Kyle are restored. ${fmt(m.onLine)} line workers are working 16-hour shifts. Find the AI estimated restoration time for your address → ${site} #KyleFL`,
+      fb:`Restoration update: ${pct(m.restoredPct)} restored.\n\nEstimated restoration times:\n${etrs.slice(0,6).map(o=>`• ${o.z.short}: ${o.restored?'restored':fmtDT(o.etaDate)}`).join('\n')}\n\nLook up your address at ${site}.`,
+      sms:`Bayview: Estimated restoration for your area: ${fmtDT(etrs[4].etaDate)}. We'll text you if this changes by more than 1 hour. Reply OUT if your neighbours are on and you are not.`,
+      email:`Subject: Your estimated restoration time\n\nBased on crews assigned to your area and damage assessed, power should be restored by ${fmtDT(etrs[4].etaDate)}. This estimate updates automatically.`,
+      ivr:`Restoration times are now available by address. Please enter your phone number or account number to hear the estimated restoration time for your home.`
+    },
+    recover:{
+      x:`✅ ${pct(m.restoredPct)} of customers affected by Hurricane Kyle are restored. Thank you for your patience — and thank you to crews from 6 states. Still out? Text OUT to 72990. #KyleFL`,
+      fb:`Thank you, Tampa Bay. ${pct(m.restoredPct)} of customers affected by Kyle have their power back. Crews are finishing individual service repairs.\n\nIf you are still without power while neighbours have it, text OUT to 72990 so we can create a ticket.`,
+      sms:`Bayview: Power is restored in your area. Still out? Reply OUT and we'll dispatch a crew. Thank you for your patience during Kyle.`,
+      email:`Subject: Power restored — thank you\n\nPower has been restored in your area. If you are still without power, reply OUT to any of our texts. Tips for safely restarting appliances are below.`,
+      ivr:`Power has been restored to most customers affected by Hurricane Kyle. If you are still without power, press 1 to report it.`
+    }
+  };
+  return T[PH[S.phase].key];
+}
+SCREENS.comms = function(){
+  const m = M(), T = templates(m), key = PH[S.phase].key;
+  const surge = sum(m.zs.filter(o=>o.z.coastal), o=>o.z.cust);
+  const segs = [['All electric customers', TOTAL_CUST],['Water customers', TOTAL_WATER],['Medical-needs / life-support', 1240],['Coastal surge zones', surge],['Critical facilities & key accounts', 86],['Customers currently out', m.outNow]];
+  const trig = ['Outage detected by smart meter → SMS within 5 min','AI ETR changes by > 1 hour → SMS + website update','Crew dispatched to your area → SMS','Power restored → "Still out? Reply OUT" SMS','Boil-water advisory issued → SMS + IVR to affected water customers','Auto-publish social posts without human approval'];
+  const approvedN = CH.filter(c=>S.commsApproved.has(key+'-'+c.id)).length;
+  return `<div class="stack">
+    <div class="kpis">
+      ${kpi('Phase campaign', PH[S.phase].label, '', `${approvedN} / 5 channels approved`)}
+      ${kpi('Reach', fmt(TOTAL_CUST + TOTAL_WATER*.2), '', 'unique customers, all channels')}
+      ${kpi('SMS opted-in', '71%', 'pos', '+9 pts since prep campaign')}
+      ${kpi('Inbound calls avoided', S.commsApproved.size?fmt(m.predTotal*.42):'—', 'pos', 'proactive notifications')}
+      ${kpi('Medical-needs reached', S.approved.has('medical')?'1,198 / 1,240':'0 / 1,240', S.approved.has('medical')?'pos':'neg', 'outbound call + SMS')}
+      ${kpi('Website ETRs live', S.pubZones.size+' zones', S.pubZones.size?'pos':'warnc', '', 'portal')}
+    </div>
+    <div class="card ai-panel">
+      <div class="card-h" style="border-color:var(--purbd)"><div class="ai-glyph">${icon('jarvis')}</div><h3 style="color:var(--pur3)">AI-drafted campaign — ${PH[S.phase].short} · ${PH[S.phase].label}</h3><span class="hint">Generated from live model data. Every number updates with the storm.</span><div style="flex:1"></div>
+        <button class="btn btn-sm" id="regen">↻ Regenerate</button>
+        ${approvedN===5?'<span class="tag tag-ok">All approved & scheduled</span>':'<button class="btn btn-sm btn-primary" id="approveAll">Approve & send all 5</button>'}
+      </div>
+      <div class="card-b" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(300px,1fr));gap:12px">
+        ${CH.map(c=>{ const ok = S.commsApproved.has(key+'-'+c.id); return `<div class="chcard">
+          <div style="display:flex;align-items:center;gap:8px"><div class="chico" style="background:${c.c};${c.id==='x'?'border:1px solid #444':''}">${c.l}</div><b style="font:500 12px Poppins;color:var(--t1)">${c.n}</b><div style="flex:1"></div>${ok?'<span class="tag tag-ok">Approved · sent</span>':'<span class="tag tag-warn">Draft</span>'}</div>
+          <div class="txt">${esc(T[c.id])}</div>
+          <div class="muted" style="font:300 10px Poppins">${c.id==='x'?T.x.length+' / 280 chars':c.id==='sms'?T.sms.length+' chars · '+Math.ceil(T.sms.length/160)+' segment(s)':'Audience: '+(c.id==='ivr'?'inbound callers':'all customers')}</div>
+          <div style="display:flex;gap:6px;justify-content:flex-end">${ok?'':`<button class="btn btn-sm">Edit</button><button class="btn btn-sm btn-primary" data-chapprove="${c.id}">Approve</button>`}</div></div>`; }).join('')}
+      </div>
+    </div>
+    <div class="grid2">
+      <div class="card">
+        <div class="card-h"><h3>Audience segments</h3></div>
+        <table class="tbl"><tbody>${segs.map(([n,c])=>`<tr><td>${n}</td><td class="n" style="font-weight:600">${fmt(c)}</td><td style="width:90px"><button class="btn btn-sm" data-seg="${esc(n)}">Target</button></td></tr>`).join('')}</tbody></table>
+      </div>
+      <div class="card">
+        <div class="card-h"><h3>Automated triggers</h3><span class="hint">OMS & AMI events → customer notifications</span></div>
+        <div class="card-b stack" style="gap:10px">
+          ${trig.map((t,i)=>`<div style="display:flex;align-items:center;gap:10px"><button class="switch${S.triggers[i]?' on':''}" data-trig="${i}"></button><span style="font:400 11.5px Poppins;color:${S.triggers[i]?'var(--t2)':'var(--t4)'}">${t}</span></div>`).join('')}
+          <div class="muted" style="font:300 10px Poppins;border-top:1px solid var(--rule);padding-top:8px">Policy: public-facing social posts and website ETRs require human approval.</div>
+        </div>
+      </div>
+    </div>
+  </div>`;
+};
+WIRE.comms = function(){
+  const key = PH[S.phase].key;
+  $$('[data-chapprove]').forEach(el=>el.addEventListener('click', ()=>{ S.commsApproved.add(key+'-'+el.dataset.chapprove); toast(`${CH.find(c=>c.id===el.dataset.chapprove).n} message approved & scheduled.`); refresh(); }));
+  const all = $('#approveAll'); if(all) all.addEventListener('click', ()=>{ CH.forEach(c=>S.commsApproved.add(key+'-'+c.id)); if(S.phase<2) S.approved.add('comms'); toast('Campaign approved — 5 channels scheduled.'); refresh(); });
+  $('#regen').addEventListener('click', ()=>toast('Jarvis regenerated drafts with the latest model data.', 'ai'));
+  $$('[data-trig]').forEach(el=>el.addEventListener('click', ()=>{ const i = Number(el.dataset.trig); S.triggers[i] = !S.triggers[i]; refresh(); }));
+  $$('[data-seg]').forEach(el=>el.addEventListener('click', ()=>toast(`Segment "<b>${el.dataset.seg}</b>" added to campaign audience.`, 'info')));
+};
+
+/* ===================================================================
+   SCREEN: CUSTOMER OUTAGE MAP (public website preview)
+   =================================================================== */
+const ADDRS = [['1208 Bayshore Blvd, Tampa','tpa'],['455 Lumsden Rd, Brandon','brn'],['6301 Apollo Beach Blvd, Apollo Beach','apb'],['10920 Big Bend Rd, Riverview','rvv'],['1802 Cortaro Dr, Sun City Center','scc'],['3305 James L Redman Pkwy, Plant City','plc']];
+SCREENS.portal = function(){
+  const m = M(), o = S.portalZone ? m.zs.find(x=>x.z.id===S.portalZone) : null;
+  const pub = o && S.pubZones.has(o.z.id);
+  const banner = S.phase===0 ? ['#fff4dc','#7a4b00',`Hurricane Kyle may affect our service area ${fmtT(LANDFALL)}. Prepare now — sign up for outage alerts.`]
+    : S.phase===1 ? ['#ffe3d6','#8a2c00','Hurricane Warning: crews are staged and ready. If you lose power, our smart meters tell us automatically.']
+    : S.phase===2 ? ['#ffd9df','#8a0019',`Hurricane Kyle has made landfall. ${fmt(m.outNow)} customers are without power. Crews begin when it is safe.`]
+    : S.phase===3 ? ['#dfe9ff','#0b3d91',`Restoration in progress — ${pct(m.restoredPct)} restored. Check your address for an estimated restoration time.`]
+    : ['#ddf6e6','#0f5b2b',`${pct(m.restoredPct)} of affected customers are restored. Still out? Text OUT to 72990.`];
+  let result = '';
+  if(o){
+    if(S.phase<2) result = `<div style="font:600 15px Poppins">No outage at this address</div><div style="font:400 12px/1.6 Poppins;color:#4a5578;margin-top:4px">Our storm model shows a <b>${pct(o.pctPred)}</b> chance of outage in ${o.z.short} during Hurricane Kyle. We'll text you if your power goes out.</div>`;
+    else if(o.restored) result = `<div style="font:600 16px Poppins;color:#0f7a3a">✓ Power restored</div><div style="font:400 12px Poppins;color:#4a5578;margin-top:4px">${o.z.short} was restored ${fmtDT(o.etaDate)}. Still out? Text OUT to 72990.</div>`;
+    else if(pub) result = `<div style="font:400 11px Poppins;color:#4a5578;text-transform:uppercase;letter-spacing:.08em">Estimated restoration</div><div style="font:700 24px Poppins;color:#0b3d91;margin-top:2px">${fmtDT(o.etaDate)}</div>
+      <div style="font:400 12px/1.7 Poppins;color:#4a5578;margin-top:6px">${o.crews} line workers assigned to ${o.z.short} · Cause: ${o.z.coastal?'storm surge & wind damage':'wind & tree damage'} · Updated every 15 minutes</div>
+      <div style="display:flex;gap:6px;margin-top:8px"><span style="font:500 10px Poppins;background:#e6edff;color:#0b3d91;border-radius:4px;padding:3px 7px">AI estimate · ${m.conf}% confidence</span></div>`;
+    else result = `<div style="font:600 15px Poppins;color:#8a2c00">Outage confirmed</div><div style="font:400 12px/1.6 Poppins;color:#4a5578;margin-top:4px">We know your power is out. ${S.phase===2?'Crews will begin as soon as winds drop below 39 mph.':'Damage assessment is under way — your estimated restoration time will appear here soon.'}</div>
+      ${S.phase>=3?'<div style="font:400 10.5px Poppins;color:#a05a00;margin-top:8px;background:#fff4dc;padding:6px 8px;border-radius:6px">Demo tip: publish ETRs in Restoration & ETR to show the exact time here.</div>':''}`;
+  }
+  return `<div class="stack">
+    <div class="muted" style="font:300 11px Poppins">This is the public outage page fed by OMS360. AI ETRs appear here only after a supervisor approves publishing.</div>
+    <div class="browser">
+      <div class="browser-bar"><i style="background:#ff5f57"></i><i style="background:#febc2e"></i><i style="background:#28c840"></i><div class="browser-url">🔒 https://bayviewpw.example/outages</div></div>
+      <div class="pt">
+        <div class="pt-hdr"><div style="width:30px;height:30px;border-radius:7px;background:linear-gradient(135deg,#6f9dff,#3ec46d)"></div><div><div style="font:600 16px Poppins">Bayview Power &amp; Water</div><div style="font:300 11px Poppins;opacity:.8">Outage Center</div></div>
+          <div style="margin-left:auto;display:flex;gap:16px;font:400 12px Poppins;opacity:.9"><span>Outage map</span><span>Report outage</span><span>Storm center</span><span>Alerts</span></div></div>
+        <div class="pt-banner" style="background:${banner[0]};color:${banner[1]}">⚠ ${banner[2]}</div>
+        <div class="pt-body">
+          <div style="display:flex;flex-direction:column;gap:14px">
+            <div class="pt-card">
+              <div style="font:600 14px Poppins;margin-bottom:8px">Check your address</div>
+              <div style="display:flex;gap:8px"><input id="addrIn" list="addrList" placeholder="Enter your street address" value="${o?esc(ADDRS.find(a=>a[1]===o.z.id)?.[0]||o.z.short):''}"><button class="pt-btn" id="addrBtn">Check</button></div>
+              <datalist id="addrList">${ADDRS.map(a=>`<option value="${a[0]}">`).join('')}</datalist>
+              <div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:8px">${ADDRS.slice(0,4).map(a=>`<button data-addr="${a[1]}" style="font:400 10.5px Poppins;border:1px solid #c6cfe1;background:#f5f7fc;color:#0b3d91;border-radius:14px;padding:4px 9px;cursor:pointer">${a[0].split(',')[1].trim()}</button>`).join('')}</div>
+            </div>
+            ${o?`<div class="pt-card" style="border-color:#b8c8f0">${result}</div>`:''}
+            <div class="pt-card" style="display:grid;grid-template-columns:1fr 1fr;gap:10px">
+              <div><div style="font:400 10.5px Poppins;color:#4a5578">Customers out</div><div style="font:700 20px Poppins;color:#8a0019">${fmt(S.phase<2?0:m.outNow)}</div></div>
+              <div><div style="font:400 10.5px Poppins;color:#4a5578">Restored</div><div style="font:700 20px Poppins;color:#0f7a3a">${S.phase<2?'—':pct(m.restoredPct)}</div></div>
+            </div>
+            <div class="pt-card"><div style="font:600 13px Poppins">Get outage alerts</div><div style="font:400 11.5px Poppins;color:#4a5578;margin:4px 0 8px">Text REG to 72990 or enter your mobile number.</div><div style="display:flex;gap:8px"><input placeholder="(813) 555-0123"><button class="pt-btn" id="regBtn">Sign up</button></div></div>
+          </div>
+          <div><div id="portalMap" class="map"></div><div style="font:400 10.5px Poppins;color:#4a5578;margin-top:6px">Circles show ${S.phase<2?'predicted outage risk':'current outages'} by community. Click for details.</div></div>
+        </div>
+      </div>
+    </div>
+  </div>`;
+};
+WIRE.portal = function(){
+  const m = M(), map = makeMap('portalMap', {zoom:10, light:true});
+  if(map) m.zs.forEach(o=>{
+    const v = S.phase<2?o.pctPred:o.pctOut, col = o.restored&&S.phase>=2?'#1a9c4a':sevColor(v);
+    L.circle([o.z.lat,o.z.lng], {radius:Math.sqrt(o.z.cust)*14, color:col, weight:1.5, fillColor:col, fillOpacity:.35}).addTo(map)
+      .bindPopup(`<b>${o.z.short}</b><br>${S.phase<2?'Outage risk: '+pct(o.pctPred):'Out: '+fmt(o.out)}<br>${S.phase>=3?(o.restored?'Restored':S.pubZones.has(o.z.id)?'Est. restoration: '+fmtDT(o.etaDate):'Assessing'):''}`);
+  });
+  const go = v => { const s = v.toLowerCase(); const hit = ADDRS.find(a=>a[0].toLowerCase()===s) || ADDRS.find(a=>s && a[0].toLowerCase().includes(s)); const z = hit ? hit[1] : (ZONES.find(z=>s.includes(z.short.toLowerCase()))||ZONES[0]).id; S.portalZone = z; refresh(); };
+  $('#addrBtn').addEventListener('click', ()=>go($('#addrIn').value));
+  $('#addrIn').addEventListener('keydown', e=>{ if(e.key==='Enter') go(e.target.value); });
+  $$('[data-addr]').forEach(el=>el.addEventListener('click', ()=>{ S.portalZone = el.dataset.addr; refresh(); }));
+  $('#regBtn').addEventListener('click', ()=>toast('Customer subscribed to outage alerts (demo).', 'info'));
+};
+
+/* ===================================================================
+   JARVIS — scripted intent engine + voice in / voice out
+   =================================================================== */
+function zoneIn(q){ return ZONES.find(z => q.includes(z.short.toLowerCase()) || q.includes(z.id) || (z.id==='tnc' && q.includes('town and country'))); }
+function answer(raw){
+  const q = raw.toLowerCase(), m = M(), sn = stormNow(), pre = S.phase < 2;
+  const z = zoneIn(q);
+  const catMatch = q.match(/cat(?:egory)?\s*([1-5])/);
+  // scenario
+  if(catMatch && /what if|if it|becomes|scenario|upgrade|stronger|worse|instead/.test(q) || /what if/.test(q) && catMatch){
+    const c = Number(catMatch[1]), m2 = M(c);
+    return {html:`If Kyle makes landfall as a <b>Category ${c}</b> instead of ${S.cat}:<ul>
+      <li>Predicted outages: <b>${fmt(m2.predTotal)}</b> (${m2.predTotal>m.predTotal?'+':''}${fmt(m2.predTotal-m.predTotal)})</li>
+      <li>Line workers needed: <b>${fmt(m2.reqLine)}</b> — mutual aid request becomes ${fmt(m2.mutualReq)}</li>
+      <li>95% restored by <b>${fmtDT(addH(LANDFALL,m2.p95))}</b></li>
+      <li>Storm surge: ${SURGE_BY_CAT[c]}</li></ul>`,
+      acts:[[`Switch scenario to Cat ${c}`, `__cat${c}`]],
+      say:`At category ${c}, about ${fmt(m2.predTotal)} customers would lose power and we would need ${fmt(m2.reqLine)} line workers.`};
+  }
+  if(/(more|enough|how many).*(people|crew|worker|line|staff|resource)|mutual aid|staff|do i need/.test(q) && !/water/.test(q)){
+    const have = pre ? m.planLine : m.onLine, gap = m.reqLine - have;
+    return {html: gap>0 ? `<b>Yes — you need more people.</b> For a Cat ${m.cat} landfall the model needs <b>${fmt(m.reqLine)}</b> line workers; you ${pre?'have committed':'have on hand'} <b>${fmt(have)}</b>. That's a gap of <b>${fmt(gap)}</b>.<ul><li>Request ${fmt(m.mutualReq)} mutual-aid line workers + ${fmt(m.treeReq)} tree workers now</li><li>They need 36–60 h to arrive — landfall is ${fmtT(LANDFALL)}</li><li>Without them, 95% restoration slips to <b>${fmtDT(addH(LANDFALL,m.p95))}</b></li></ul>`
+      : `<b>You're covered.</b> ${fmt(have)} line workers against a requirement of ${fmt(m.reqLine)}. 95% of customers should be restored by <b>${fmtDT(addH(LANDFALL,m.p95))}</b>.`,
+      acts: gap>0 && !S.approved.has('mutual') && S.phase<3 ? [['Request mutual aid','mutual'],['Open crew plan','__nav:crews']] : [['Open crew plan','__nav:crews']],
+      say: gap>0 ? `Yes. You need ${fmt(m.reqLine)} line workers and have ${fmt(have)}. I recommend requesting ${fmt(m.mutualReq)} mutual aid workers now.` : `You're covered. ${fmt(have)} line workers are available.`};
+  }
+  if(/hospital|critical|facilit|shelter|medical/.test(q)){
+    return {html:`<b>${m.critAtRisk} critical facilities</b> are in high-risk zones:<ul>${FACILITIES.filter(f=>m.zs.find(x=>x.z.id===f.zone).pctPred>.2).map(f=>`<li>${f.n} — ${f.feeder}, backup ${f.backup}</li>`).join('')}</ul>Tampa General's feeder is ranked #1 for restoration. 1,240 medical-needs customers ${S.approved.has('medical')?'have been contacted ✓':'<b>have not been contacted yet</b>'}.`,
+      acts: S.approved.has('medical') ? [] : [['Contact medical-needs customers','medical']],
+      say:`${m.critAtRisk} critical facilities are at risk, including Tampa General Hospital, which is first in the restoration queue.`};
+  }
+  if(/water|lift|boil|sewer/.test(q)){
+    return {html:`Water system outlook (Cat ${m.cat}): <b>${m.liftAtRisk}</b> of 412 lift stations are in predicted outage areas without backup power. I recommend <b>${m.gensNeeded} portable generators</b>. ${m.cat>=3?`Coastal zones (${m.zs.filter(o=>o.z.coastal).map(o=>o.z.short).join(', ')}) may need precautionary boil-water notices — templates are ready.`:'No boil-water notices expected.'}`,
+      acts: S.approved.has('generators') ? [] : [['Deploy generators','generators']], say:`${m.liftAtRisk} lift stations are at risk. I recommend deploying ${m.gensNeeded} generators.`};
+  }
+  if(/post|tweet|draft|social|facebook|announce|message|text customers|sms/.test(q)){
+    const T = templates(m);
+    let txt = T.x;
+    if(z && S.phase>=2){ const o = m.zs.find(x=>x.z.id===z.id); txt = `Update for ${z.short}: ${o.restored?'power has been restored. Still out? Text OUT to 72990.':`${fmt(o.out)} customers are out. ${o.crews} line workers are assigned. Estimated restoration: ${fmtDT(o.etaDate)}.`} Details → bayviewpw.example/outages #KyleFL`; }
+    return {html:`Here's a draft for X:<div class="txt" style="margin-top:6px;background:#081230;border:1px solid var(--rule);border-radius:7px;padding:8px 10px;white-space:pre-wrap">${esc(txt)}</div>`,
+      acts:[['Open campaign','__nav:comms']], say:`I've drafted a post${z?' for '+z.short:''}. You can review it in communications.`};
+  }
+  if(/when|restor|etr|back on|power back|how long/.test(q)){
+    if(z){ const o = m.zs.find(x=>x.z.id===z.id);
+      return {html: o.restored ? `<b>${z.short}</b> was restored at ${fmtDT(o.etaDate)}.` : `<b>${z.short}</b>: ${pre?`predicted ${fmt(o.pred)} customers out (${pct(o.pctPred)})`:`${fmt(o.out)} customers out`}. AI estimated restoration: <b>${fmtDT(o.etaDate)}</b> (${o.eta} h after landfall), ${o.crews} line workers assigned.${o.z.coastal?' Surge damage slows this zone.':''}`,
+        acts:[['See all ETRs','__nav:restore']], say: o.restored ? `${z.short} is already restored.` : `${z.short} should be restored by ${fmtDT(o.etaDate)}.`};
+    }
+    return {html:`Average AI restoration: <b>${Math.round(m.avgEta)} hours</b> after landfall. 95% of customers restored by <b>${fmtDT(addH(LANDFALL,m.p95))}</b>.<ul>${m.zs.slice().sort((a,b)=>a.eta-b.eta).slice(0,3).map(o=>`<li>Fastest: ${o.z.short} — ${fmtT(o.etaDate)}</li>`).join('')}${m.zs.slice().sort((a,b)=>b.eta-a.eta).slice(0,2).map(o=>`<li>Slowest: ${o.z.short} — ${fmtT(o.etaDate)}</li>`).join('')}</ul>`,
+      acts:[['See all ETRs','__nav:restore']], say:`On average, power will be back ${Math.round(m.avgEta)} hours after landfall. 95 percent by ${fmtDT(addH(LANDFALL,m.p95))}.`};
+  }
+  if(/worst|hardest|most affected|which (area|zone|neighbo)|where.*(out|impact)/.test(q)){
+    const t = m.zs.slice().sort((a,b)=>pre?b.pred-a.pred:b.out-a.out).slice(0,3);
+    return {html:`Hardest hit ${pre?'(predicted)':'(right now)'}:<ul>${t.map(o=>`<li><b>${o.z.short}</b> — ${fmt(pre?o.pred:o.out)} customers (${pct(pre?o.pctPred:o.pctOut)})${o.z.coastal?' · surge zone':''}</li>`).join('')}</ul>`,
+      acts:[['Open prediction map','__nav:predict']], say:`The hardest hit areas are ${t.map(o=>o.z.short).join(', ')}.`};
+  }
+  if(/cost|budget|spend|money/.test(q)){
+    const cost = m.mutualReq*4200*Math.max(3,m.avgEta/24) + m.predTotal*38;
+    return {html:`Estimated storm cost: <b>$${(cost/1e6).toFixed(1)}M</b><ul><li>Mutual-aid crews: $${(m.mutualReq*4200*Math.max(3,m.avgEta/24)/1e6).toFixed(1)}M (${fmt(m.mutualReq)} workers × ~$4,200/day)</li><li>Materials & logistics: $${(m.predTotal*38/1e6).toFixed(1)}M</li></ul>Typically eligible for storm-cost recovery filing.`, acts:[], say:`The estimated storm cost is ${(cost/1e6).toFixed(1)} million dollars.`};
+  }
+  if(/weather|wind|landfall|where.*storm|rain|surge|track|kyle/.test(q)){
+    const w = S.wx && !S.wx.err ? ` Live conditions in Tampa right now (${S.wx.src}): ${Math.round(S.wx.temp)}°F, wind ${Math.round(S.wx.wind)} mph, gusts ${Math.round(S.wx.gust)} mph.` : '';
+    return {html:`<b>Hurricane Kyle</b> — ${sn.label}${sn.wind?`, ${sn.wind} mph`:''}, ${sn.dist}. ${S.phase<2?`Landfall forecast ${fmtDT(LANDFALL)} as Cat ${S.cat} with ${SURGE_BY_CAT[S.cat]} surge.`:PH[S.phase].status+'.'}${w}`,
+      acts:[['Open storm view','__nav:storm']], say:`Hurricane Kyle is ${sn.label}, ${sn.dist}.`};
+  }
+  if(/how many|customers out|outage|affected/.test(q)){
+    return {html: pre ? `No outages yet. The model predicts a peak of <b>${fmt(m.predTotal)}</b> customers (${pct(m.predTotal/TOTAL_CUST)}) about 3 hours after landfall.` : `<b>${fmt(m.outNow)}</b> customers are out right now. ${pct(m.restoredPct)} of affected customers have been restored.`,
+      acts:[], say: pre ? `We predict ${fmt(m.predTotal)} customers will lose power.` : `${fmt(m.outNow)} customers are currently out.`};
+  }
+  if(/report|after.action|summary for|regulator|psc/.test(q)){
+    return {html:`After-action draft ready:<ul><li>Peak outages: ${fmt(m.predTotal*.9)}</li><li>Line workers deployed: ${fmt(m.onLine)}</li><li>Avg ETR error: ±2.1 h</li><li>Messages sent: ${fmt(TOTAL_CUST*3.4)}</li><li>Decisions logged: ${S.approved.size}</li></ul>`, acts:[], say:'The after action report draft is ready.'};
+  }
+  if(/what (should|do) (we|i)|priorit|brief|status|summar|first|next|update me|situation/.test(q)){
+    const p = pendingActions().slice(0,3);
+    return {html:`<b>Situation — ${PH[S.phase].short} ${PH[S.phase].label}.</b> ${PH[S.phase].status}. ${pre?`Predicted peak ${fmt(m.predTotal)} customers out.`:`${fmt(m.outNow)} customers out, ${pct(m.restoredPct)} restored.`} Readiness ${readiness()}%.<br>${p.length?`Top priorities:<ul>${p.map(a=>`<li>${a.title(m)}</li>`).join('')}</ul>`:'All recommended actions for this phase are done. ✓'}`,
+      acts: p.slice(0,2).map(a=>['Approve: '+stripTags(a.title(m)).slice(0,38)+'…', a.id]),
+      say: p.length ? `Your top priority is: ${stripTags(p[0].title(m))}.` : 'All recommended actions for this phase are complete.'};
+  }
+  return {html:`I can help with crews, restoration times, hardest-hit areas, critical facilities, water, costs, scenarios and customer messages. Try:<ul><li>"Do I need more people?"</li><li>"When will Riverview be restored?"</li><li>"What if Kyle becomes a Cat 4?"</li><li>"Draft a post for Brandon customers"</li></ul>`, acts:[], say:'Here are some things you can ask me.'};
+}
+
+function ask(q){
+  q = (q||'').trim(); if(!q) return;
+  S.chat.push({who:'me', html:esc(q)});
+  const a = answer(q);
+  S.chat.push({who:'ai', html:a.html, acts:a.acts});
+  renderChats();
+  if(S.voice) speak(a.say || stripTags(a.html));
+}
+function chatHtml(limit){
+  const list = limit ? S.chat.slice(-limit) : S.chat;
+  return list.map(c=>`<div class="msg ${c.who}">${c.html}${c.acts&&c.acts.length?`<div class="act">${c.acts.map(([l,id])=>id.startsWith('__nav:')?`<button class="btn btn-sm" data-nav="${id.slice(6)}">${esc(l)}</button>`:id.startsWith('__cat')?`<button class="btn btn-sm btn-ai" data-setcat="${id.slice(5)}">${esc(l)}</button>`:S.approved.has(id)?'<span class="tag tag-ok">Approved ✓</span>':`<button class="btn btn-sm btn-primary" data-approve="${id}">${esc(l)}</button>`).join('')}</div>`:''}</div>`).join('');
+}
+function renderChats(){
+  ['#miniChat','#bigChat'].forEach(sel=>{ const el = $(sel); if(el){ el.innerHTML = chatHtml(sel==='#miniChat'?4:0); el.scrollTop = el.scrollHeight; } });
+}
+document.addEventListener('click', e=>{ const c = e.target.closest('[data-setcat]'); if(c){ S.cat = Number(c.dataset.setcat); toast(`Scenario → Cat ${S.cat}`, 'ai'); refresh(); } });
+
+const chatInput = id => `<div style="display:flex;gap:8px;align-items:center">
+  <input class="field" id="${id}In" placeholder="Ask Jarvis… e.g. 'Do I need more crews?'" autocomplete="off">
+  <button class="mic" id="${id}Mic" title="Talk to Jarvis">${icon('mic','ic','width:17px;height:17px')}</button>
+  <button class="btn btn-ai" id="${id}Send" style="height:40px">${icon('send')}</button></div>`;
+
+function wireChat(id){
+  const inp = $('#'+id+'In'); if(!inp) return;
+  const send = () => { const v = inp.value; inp.value = ''; ask(v); };
+  inp.addEventListener('keydown', e=>{ if(e.key==='Enter') send(); });
+  $('#'+id+'Send').addEventListener('click', send);
+  $('#'+id+'Mic').addEventListener('click', ()=>listen(id));
+  const el = $(id==='mini'?'#miniChat':'#bigChat'); if(el) el.scrollTop = el.scrollHeight;
+}
+function listen(id){
+  const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
+  if(!SR){ toast('Voice input needs Chrome or Edge. You can type instead.', 'info'); return; }
+  const btn = $('#'+id+'Mic');
+  const r = new SR(); r.lang = 'en-US'; r.interimResults = true; r.maxAlternatives = 1;
+  btn.classList.add('rec');
+  r.onresult = e => { const t = Array.from(e.results).map(x=>x[0].transcript).join(''); const inp = $('#'+id+'In'); if(inp) inp.value = t; if(e.results[e.results.length-1].isFinal){ const inp2 = $('#'+id+'In'); if(inp2) inp2.value=''; ask(t); } };
+  r.onerror = e => { toast('Voice: '+e.error, 'info'); };
+  r.onend = () => { const b = $('#'+id+'Mic'); if(b) b.classList.remove('rec'); };
+  r.start();
+}
+function speak(text){
+  if(!('speechSynthesis' in window)) return;
+  speechSynthesis.cancel();
+  const u = new SpeechSynthesisUtterance(text);
+  const v = speechSynthesis.getVoices().find(v=>/en-GB/.test(v.lang) && /male|daniel|george|arthur/i.test(v.name)) || speechSynthesis.getVoices().find(v=>/en-(GB|US)/.test(v.lang));
+  if(v) u.voice = v;
+  u.rate = 1.03; u.pitch = .95;
+  u.onstart = () => { const o = $('#orb'); if(o) o.classList.add('talk'); };
+  u.onend = () => { const o = $('#orb'); if(o) o.classList.remove('talk'); };
+  speechSynthesis.speak(u);
+}
+if('speechSynthesis' in window) speechSynthesis.onvoiceschanged = () => {};
+
+SCREENS.jarvis = function(){
+  const prompts = ['Give me a situation briefing','Do I need more people?','Which areas will be hit hardest?','When will Riverview be restored?','What if Kyle becomes a Cat 4?','Are the hospitals at risk?','What about the water system?','Draft a post for Brandon customers','How much will this storm cost?','Where is the storm now?'];
+  return `<div class="row wrap" style="align-items:stretch">
+    <div class="card ai-panel" style="flex:2;display:flex;flex-direction:column;min-height:640px">
+      <div class="card-h" style="border-color:var(--purbd);gap:14px">
+        <div class="orb" id="orb" style="width:46px;height:46px"></div>
+        <div><h3 style="color:var(--pur3);font-size:14px">Jarvis</h3><div class="muted" style="font:300 10.5px Poppins">Connected to OMS · AMI · GIS · Weather · Crew GPS · Campaigns</div></div>
+        <div style="flex:1"></div>
+        <span class="muted" style="font:300 10.5px Poppins">Voice replies</span><button class="switch${S.voice?' on':''}" id="voiceSw"></button>
+        <button class="btn btn-sm" id="clearChat">New conversation</button>
+      </div>
+      <div class="card-b" style="flex:1;display:flex;flex-direction:column;gap:12px">
+        <div class="chat" id="bigChat" style="flex:1;max-height:470px;min-height:300px">${chatHtml(0)}</div>
+        ${chatInput('big')}
+      </div>
+    </div>
+    <div class="stack" style="flex:1;min-width:280px">
+      <div class="card"><div class="card-h"><h3>Try asking</h3></div>
+        <div class="card-b" style="display:flex;flex-direction:column;gap:7px;align-items:flex-start">${prompts.map(p=>`<button class="qp" data-ask="${p}">${p}</button>`).join('')}</div></div>
+      <div class="card"><div class="card-h"><h3>What Jarvis can see</h3></div>
+        <div class="card-b stack" style="gap:7px;font:400 11px Poppins">
+          ${[['Storm phase',PH[S.phase].short+' · '+PH[S.phase].label],['Scenario','Cat '+S.cat],['Live weather',S.wx&&!S.wx.err?S.wx.src:'—'],['Pending actions',pendingActions().length],['Decisions logged',S.approved.size]].map(([k,v])=>`<div style="display:flex;justify-content:space-between"><span class="muted">${k}</span><b style="color:var(--t2);font-weight:500">${v}</b></div>`).join('')}
+          <div class="muted" style="font:300 10px/1.6 Poppins;border-top:1px solid var(--rule);padding-top:8px">🎙 Click the mic and speak (Chrome/Edge). Jarvis answers from the same live model as every screen.</div>
+        </div></div>
+    </div>
+  </div>`;
+};
+WIRE.jarvis = function(){
+  wireChat('big');
+  $('#voiceSw').addEventListener('click', ()=>{ S.voice = !S.voice; if(!S.voice && 'speechSynthesis' in window) speechSynthesis.cancel(); refresh(); });
+  $('#clearChat').addEventListener('click', ()=>{ S.chat = [greeting()]; refresh(); });
+  setTimeout(()=>$('#bigIn') && $('#bigIn').focus(), 50);
+};
+function greeting(){ return {who:'ai', html:`Good evening, Dana. I'm tracking <b>Hurricane Kyle</b> for Bayview. Ask me what we need to do, whether we have enough crews, or when any neighbourhood will be restored.`}; }
+
+/* ===================================================================
+   SCREEN: SETTINGS
+   =================================================================== */
+SCREENS.settings = function(){
+  const wx = S.wx;
+  return `<div class="grid2">
+    <div class="card">
+      <div class="card-h"><h3>Weather data</h3><div style="flex:1"></div>${wx&&!wx.err?`<span class="livetag"><i></i>${wx.src} connected</span>`:'<span class="tag tag-warn">Not connected</span>'}</div>
+      <div class="card-b stack" style="gap:11px">
+        <div class="muted" style="font:300 11px/1.7 Poppins">Without a key, OMS360 uses the free, keyless <b style="color:var(--t2)">Open-Meteo</b> feed for live Tampa conditions. Add a free <b style="color:var(--t2)">OpenWeather</b> API key (openweathermap.org → API keys) to switch to OpenWeather and unlock live radar, wind and cloud map overlays.</div>
+        <div><div class="sec-label" style="margin-bottom:6px">OpenWeather API key</div>
+          <div style="display:flex;gap:8px"><input class="field" id="owKey" type="password" placeholder="Paste your OpenWeather API key" value="${esc(S.owKey)}"><button class="btn btn-primary" id="owSave">Save & test</button>${S.owKey?'<button class="btn" id="owClear">Remove</button>':''}</div></div>
+        ${wx&&wx.err?`<div class="tag tag-bad" style="white-space:normal">${esc(wx.err)} — new OpenWeather keys can take up to 2 hours to activate.</div>`:''}
+        ${wx&&!wx.err?`<div class="muted" style="font:300 10.5px Poppins">Last reading: ${Math.round(wx.temp)}°F, ${esc(wx.desc)}, wind ${Math.round(wx.wind)} mph · ${wx.at.toLocaleTimeString()}</div>`:''}
+      </div>
+    </div>
+    <div class="card">
+      <div class="card-h"><h3>Integrations</h3></div>
+      <div class="card-b stack" style="gap:9px">
+        ${[['Outage Management System (OMS)','Connected'],['AMI / smart meters (last-gasp)','Connected'],['GIS — feeders, poles, assets','Connected'],['Crew GPS / mobile workforce','Connected'],['Public website & outage map','Connected'],['X & Facebook','Connected'],['SMS gateway','Connected'],['IVR','Connected'],['Regional mutual-aid group portal','Connected'],['NHC advisories','Simulated (demo)']]
+          .map(([n,s])=>`<div style="display:flex;justify-content:space-between;align-items:center"><span style="font:400 11.5px Poppins;color:var(--t2)">${n}</span><span class="tag ${s==='Connected'?'tag-ok':'tag-warn'}">${s}</span></div>`).join('')}
+      </div>
+    </div>
+    <div class="card">
+      <div class="card-h"><h3>AI policy</h3></div>
+      <div class="card-b stack" style="gap:10px">
+        ${[['Human approval before publishing ETRs to website','On'],['Human approval before social posts','On'],['Automated SMS on outage / restore events','On'],['Auto-release crews when winds < 39 mph','On'],['ETR refresh interval','15 min'],['Jarvis may approve actions by voice','Off']]
+          .map(([n,v])=>`<div style="display:flex;justify-content:space-between;align-items:center"><span style="font:400 11.5px Poppins;color:var(--t2)">${n}</span><span class="tag ${v==='On'?'tag-ok':v==='Off'?'tag-bad':'tag-sk'}">${v}</span></div>`).join('')}
+      </div>
+    </div>
+    <div class="card">
+      <div class="card-h"><h3>Demo controls</h3></div>
+      <div class="card-b stack" style="gap:10px">
+        <div class="muted" style="font:300 11px Poppins">Reset the walkthrough before presenting.</div>
+        <div style="display:flex;gap:8px;flex-wrap:wrap"><button class="btn btn-warn" id="resetDemo">Reset demo</button><button class="btn" id="prepDemo">Jump to T+24h with prep approved</button></div>
+      </div>
+    </div>
+  </div>`;
+};
+WIRE.settings = function(){
+  $('#owSave').addEventListener('click', ()=>{ S.owKey = $('#owKey').value.trim(); store.set('oms360_owkey', S.owKey); S.radar = !!S.owKey; S.wx = null; toast('Testing weather connection…', 'info'); fetchWeather(); });
+  const c = $('#owClear'); if(c) c.addEventListener('click', ()=>{ S.owKey=''; store.set('oms360_owkey',''); S.radar=false; S.wx=null; fetchWeather(); refresh(); });
+  $('#resetDemo').addEventListener('click', ()=>{ stopPlay(); S.phase=0; S.cat=3; S.approved.clear(); S.dismissed.clear(); S.published=false; S.pubZones.clear(); S.commsApproved.clear(); S.portalZone=null; S.chat=[greeting()]; toast('Demo reset to T-72h.'); navigate('command'); });
+  $('#prepDemo').addEventListener('click', ()=>{ ['mutual','stage','comms','medical','generators','materials','eoc','shelter','assess'].forEach(a=>S.approved.add(a)); ['prep','pre'].forEach(k=>CH.forEach(c=>S.commsApproved.add(k+'-'+c.id))); S.phase=3; toast('Jumped to T+24h — preparation approved.'); navigate('restore'); });
+};
+
+/* ===================================================================
+   BOOT
+   =================================================================== */
+S.chat = [greeting()];
+navigate('command');
+fetchWeather();
+setInterval(fetchWeather, 10*60*1000);
+</script>
+</body>
+</html>

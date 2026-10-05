@@ -1,0 +1,132 @@
+/* Global tweaks that Mantine doesn't cover: maps and a few utilities. */
+html, body { margin: 0; }
+body { -webkit-font-smoothing: antialiased; }
+
+.leaflet-container { isolation: isolate; z-index: 0; font-family: var(--mantine-font-family); background: var(--mantine-color-body); border-radius: var(--mantine-radius-md); }
+[data-mantine-color-scheme="dark"] .leaflet-container { background: #0b1532; }
+[data-mantine-color-scheme="dark"] .leaflet-popup-content-wrapper,
+[data-mantine-color-scheme="dark"] .leaflet-popup-tip { background: #121d42; color: #d5dcf0; border: 1px solid #2a3a6e; }
+.leaflet-popup-content { margin: 10px 12px; font-size: 12px; line-height: 1.55; }
+.leaflet-control-attribution { font-size: 9px !important; opacity: .75; }
+[data-mantine-color-scheme="dark"] .leaflet-bar a { background: #121d42; color: #d5dcf0; border-color: #2a3a6e; }
+.leaflet-tooltip.zlabel { background: none; border: 0; box-shadow: none; color: #fff; font-weight: 600; font-size: 10.5px; text-shadow: 0 1px 3px #000, 0 0 6px #000; padding: 0; }
+.leaflet-tooltip.zlabel::before { display: none; }
+.osm-dark { filter: invert(1) hue-rotate(200deg) brightness(.75) contrast(.9); }
+
+.hurr { font-size: 28px; line-height: 28px; text-align: center; animation: spin 3s linear infinite; filter: drop-shadow(0 0 6px rgba(255,255,255,.6)); }
+@keyframes spin { to { transform: rotate(-360deg); } }
+.mk { width: 18px; height: 18px; border-radius: 5px; display: flex; align-items: center; justify-content: center; font: 700 9.5px var(--mantine-font-family); color: #fff; border: 1.5px solid #fff; box-shadow: 0 0 5px rgba(0,0,0,.7); }
+.mk.round { border-radius: 50%; }
+.pin { width: 12px; height: 12px; border-radius: 50%; border: 2px solid #fff; box-shadow: 0 0 4px rgba(0,0,0,.7); }
+
+.pulse-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--mantine-color-teal-5); animation: pulse 1.6s infinite; display: inline-block; }
+@keyframes pulse { 0%,100% { opacity: 1 } 50% { opacity: .3 } }
+@keyframes breathe { 0%,100% { transform: scale(1) } 50% { transform: scale(1.07) } }
+.mic-rec { animation: pulse 1s infinite; }
+
+/* ---- Collapsible side navigation (desktop) ---- */
+/* The layout never changes between rail and open: icons keep one fixed position (centred in the 68px rail) and
+   only width + label opacity animate, on the same curve as the page padding, so nothing jumps. */
+.app-nav .mantine-NavLink-root { padding-inline: 15px; }
+.app-nav.collapsible { overflow: hidden; transition: width var(--nav-ms) var(--nav-ease); }
+.app-nav.collapsible .mantine-ScrollArea-viewport { overflow-x: hidden !important; }
+.app-nav .mantine-NavLink-body, .app-nav-fade, .app-nav-group > span {
+  white-space: nowrap; transition: opacity 200ms ease 70ms, transform var(--nav-ms, 280ms) var(--nav-ease, ease) 0ms; }
+.app-nav.collapsible:not(.expanded) .mantine-NavLink-body,
+.app-nav.collapsible:not(.expanded) .app-nav-fade,
+.app-nav.collapsible:not(.expanded) .app-nav-group > span { opacity: 0; transform: translateX(-8px); transition-duration: 110ms, 110ms; transition-delay: 0ms; }
+.app-nav-group { position: relative; overflow: hidden; }
+.app-nav-group > span { display: inline-block; }
+.app-nav-group::after { content: ""; position: absolute; left: 14px; right: 14px; top: 50%; height: 1px; background: var(--mantine-color-default-border);
+  opacity: 0; transition: opacity 160ms ease; pointer-events: none; }
+.app-nav.collapsible:not(.expanded) .app-nav-group::after { opacity: 1; transition-delay: 80ms; }
+@media (prefers-reduced-motion: reduce) {
+  .app-nav.collapsible, .app-nav .mantine-NavLink-body, .app-nav-fade, .app-nav-group > span, .app-nav-group::after { transition: none !important; }
+}
+
+/* ---- AI Assistant workspace ---- */
+.assistant-shell { display: flex; flex-direction: column; height: calc(100dvh - 58px - 2 * var(--mantine-spacing-lg)); min-height: 520px; }
+.assistant-column { width: 100%; max-width: 860px; margin-inline: auto; padding-inline: 4px; }
+.assistant-hero { min-height: 100%; padding-block: clamp(24px, 9vh, 96px) 24px; }
+.assistant-mark { width: 84px; height: 84px; border-radius: 50%; display: grid; place-items: center; color: var(--mantine-color-brand-4); position: relative;
+  background: light-dark(var(--mantine-color-white), var(--mantine-color-dark-7)); box-shadow: 0 0 32px rgba(63,113,255,.35); animation: breathe 3.2s ease-in-out infinite; }
+.assistant-mark::before { content: ""; position: absolute; inset: 0; border-radius: 50%; padding: 3px;
+  background: linear-gradient(135deg, var(--mantine-color-cyan-4), var(--mantine-color-brand-5), var(--mantine-color-ai-4));
+  -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0); -webkit-mask-composite: xor; mask-composite: exclude; }
+.assistant-mark.talk { animation-duration: .5s; }
+.assistant-chip { font-weight: 500; }
+.assistant-avatar { width: 30px; height: 30px; border-radius: 50%; flex: none; display: grid; place-items: center; color: #fff;
+  background: linear-gradient(135deg, var(--mantine-color-brand-5), var(--mantine-color-ai-5)); }
+.assistant-user { margin-left: auto; max-width: 80%; background: var(--mantine-color-brand-6); color: #fff; }
+.assistant-tools { opacity: .55; transition: opacity .15s; }
+.assistant-tools:hover, .assistant-tools:focus-within { opacity: 1; }
+.assistant-composer { display: flex; align-items: flex-end; gap: 8px; padding: 10px 10px 10px 20px; border-radius: 32px; border: 1.5px solid transparent;
+  background: linear-gradient(light-dark(var(--mantine-color-white), var(--mantine-color-dark-6)), light-dark(var(--mantine-color-white), var(--mantine-color-dark-6))) padding-box,
+              linear-gradient(90deg, var(--mantine-color-cyan-5), var(--mantine-color-brand-5), var(--mantine-color-ai-5)) border-box;
+  box-shadow: 0 0 22px rgba(63,113,255,.22); }
+.assistant-composer textarea { padding-block: 9px; font-size: var(--mantine-font-size-sm); }
+/* Right rail: icon column; the panel to its left slides open for History / Saved and closes on a second click. */
+.assistant-rail { --panel-w: 300px; flex: none; position: relative; display: flex; align-items: stretch; overflow: hidden; }
+.assistant-rail-icons { flex: none; width: 58px; }
+.assistant-rail-panel { width: 0; overflow: hidden; transition: width .22s ease; border-right: 1px solid transparent; }
+.assistant-rail.open .assistant-rail-panel { width: var(--panel-w); border-right-color: var(--mantine-color-default-border); }
+.assistant-rail-active { box-shadow: 0 0 0 1.5px var(--mantine-color-brand-4); }
+.assistant-panel { width: var(--panel-w); height: 100%; display: flex; flex-direction: column; animation: panel-in .22s ease; }
+@keyframes panel-in { from { opacity: 0 } to { opacity: 1 } }
+.assistant-section { display: flex; align-items: center; gap: 6px; padding: 4px 2px; margin: 4px 0 6px; }
+.assistant-chevron-closed { transform: rotate(-90deg); }
+.assistant-item { display: flex; align-items: center; gap: 6px; padding: 8px 10px; border-radius: var(--mantine-radius-md);
+  border: 1px solid light-dark(var(--mantine-color-gray-3), rgba(63,113,255,.35)); background: light-dark(var(--mantine-color-white), rgba(15,72,212,.12));
+  transition: background .12s, border-color .12s; }
+.assistant-item:hover { border-color: var(--mantine-color-brand-5); background: light-dark(var(--mantine-color-brand-0), rgba(63,113,255,.2)); }
+.assistant-item.active { border-color: var(--mantine-color-brand-4); background: light-dark(var(--mantine-color-brand-1), rgba(63,113,255,.28)); }
+.assistant-item-delete { opacity: 0; transition: opacity .12s; }
+.assistant-item:hover .assistant-item-delete, .assistant-item-delete:focus-visible { opacity: 1; }
+.assistant-saved { align-items: flex-start; }
+@media (prefers-reduced-motion: reduce) { .assistant-rail-panel, .assistant-panel { transition: none; animation: none; } }
+@media (max-width: 48em) {
+  .assistant-shell { height: calc(100dvh - 58px - 2 * var(--mantine-spacing-md)); }
+  .assistant-rail { --panel-w: min(280px, calc(100vw - 110px)); overflow: visible; }
+  .assistant-rail-icons { width: 50px; }
+  /* On phones the panel floats over the chat instead of squeezing it. */
+  .assistant-rail-panel { position: absolute; right: 100%; top: 0; bottom: 0; margin-right: 6px; border-radius: var(--mantine-radius-lg);
+    background: var(--mantine-color-body); z-index: 5; }
+  .assistant-rail.open .assistant-rail-panel { border: 1px solid var(--mantine-color-default-border); box-shadow: var(--mantine-shadow-lg); }
+  .assistant-user { max-width: 90%; }
+}
+.pre-wrap { white-space: pre-wrap; }
+.tabular { font-variant-numeric: tabular-nums; }
+.row-click { cursor: pointer; }
+
+/* ---- Sign-in page (glass over brand artwork) ---- */
+.login-shell { position: relative; min-height: 100vh; background-size: cover; background-position: center; display: flex; align-items: center; overflow: hidden; }
+.login-shade { position: absolute; inset: 0; background: linear-gradient(90deg, rgba(4,10,40,.72) 0%, rgba(10,30,90,.35) 45%, rgba(20,60,160,0) 70%); }
+.login-grid { position: relative; width: 100%; max-width: 1640px; margin: 0 auto; padding: 48px clamp(16px, 5vw, 96px); }
+.login-story { flex: 1 1 520px; }
+.login-title { margin: 0; color: #fff; font: 800 clamp(34px, 3.6vw, 60px)/1.08 var(--mantine-font-family); letter-spacing: -.02em; text-shadow: 0 2px 24px rgba(0,0,0,.25); }
+.login-title .grad-a { background: linear-gradient(90deg, #b9c8ff, #8fa7ff); -webkit-background-clip: text; background-clip: text; color: transparent; }
+.login-title .grad-b { background: linear-gradient(90deg, #c7b4ff, #a68cfa); -webkit-background-clip: text; background-clip: text; color: transparent; }
+.login-lead { color: rgba(255,255,255,.9) !important; font-size: 18px !important; line-height: 1.6 !important; max-width: 600px; }
+.glass-tile { background: rgba(255,255,255,.62); border: 1px solid rgba(255,255,255,.75); border-radius: 18px; padding: 18px; backdrop-filter: blur(14px); -webkit-backdrop-filter: blur(14px); box-shadow: 0 8px 30px rgba(10,30,90,.18); min-height: 110px; display: flex; flex-direction: column; justify-content: space-between; gap: 22px; }
+.glass-tile.assistant { min-height: 0; gap: 0; display: block; }
+.tile-icon { width: 36px; height: 36px; border-radius: 10px; display: flex; align-items: center; justify-content: center; box-shadow: 0 4px 12px rgba(0,0,0,.15); }
+.assistant-input { background: rgba(255,255,255,.75); border: 1px solid rgba(255,255,255,.9); border-radius: 14px; padding: 6px 6px 6px 16px; }
+.assistant-input input { flex: 1; border: 0; outline: 0; background: transparent; font: 400 15px var(--mantine-font-family); color: #0b1532; min-width: 0; }
+.assistant-input input::placeholder { color: #5d6a94; }
+.login-card { flex: 0 0 auto; width: min(450px, 100%); background: linear-gradient(160deg, rgba(255,255,255,.82), rgba(214,226,255,.72)); border: 1px solid rgba(255,255,255,.85);
+  border-radius: 28px; padding: 40px 36px 28px; backdrop-filter: blur(22px); -webkit-backdrop-filter: blur(22px); box-shadow: 0 24px 60px rgba(5,20,70,.35); }
+.login-label { color: #33405f !important; font-size: 12px !important; font-weight: 600 !important; letter-spacing: .1em; margin-bottom: 6px; }
+.login-input { background: #fff !important; color: #0b1532 !important; border: 1px solid rgba(11,21,50,.08) !important; box-shadow: 0 1px 3px rgba(11,21,50,.06); }
+.login-inner { color: #0b1532 !important; }
+.login-btn { background: linear-gradient(90deg, #2b6bff, #4d8dff) !important; box-shadow: 0 8px 22px rgba(43,107,255,.35); height: 50px !important; }
+.ms-btn { background: rgba(255,255,255,.85) !important; color: #0b1532 !important; border: 1px solid rgba(11,21,50,.08) !important; height: 50px !important; }
+.login-foot { position: absolute; right: 18px; bottom: 12px; color: rgba(255,255,255,.75) !important; font-size: 12px !important; }
+@media (max-width: 900px) {
+  .login-shade { background: rgba(4,10,40,.55); }
+  .login-card { margin: 0 auto; order: -1; padding: 32px 22px 24px; }
+  .glass-tile { min-height: 0; flex-direction: row; align-items: center; justify-content: flex-start; gap: 12px; padding: 12px 14px; }
+  .glass-tile.assistant { padding: 16px; }
+}
+
+/* Icon + text inside a SegmentedControl option: always one line. */
+.seg-label { display: inline-flex; align-items: center; justify-content: center; gap: 6px; white-space: nowrap; padding-inline: 4px; }

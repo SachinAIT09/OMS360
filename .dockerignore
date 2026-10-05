@@ -1,0 +1,15 @@
+**/node_modules
+**/.venv
+**/__pycache__
+**/*.pyc
+.pytest_cache
+.git
+frontend/dist
+frontend/dist.zip
+frontend/*.tsbuildinfo
+backend/data
+backend/oms360.db*
+backend/tests
+legacy
+CIS360
+scripts

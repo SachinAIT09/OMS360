@@ -1,0 +1,16 @@
+{
+  "name": "oms360",
+  "private": true,
+  "version": "1.0.0",
+  "description": "OMS360(React frontend + FastAPI backend)",
+  "scripts": {
+    "postinstall": "npm --prefix frontend install --no-fund --no-audit && node scripts/backend.mjs setup",
+    "dev": "concurrently -k -n api,web -c magenta,cyan \"node scripts/backend.mjs dev\" \"npm --prefix frontend run dev\"",
+    "build": "npm --prefix frontend run build",
+    "start": "npm run build && node scripts/backend.mjs serve",
+    "test": "node scripts/backend.mjs test && npm --prefix frontend run typecheck"
+  },
+  "devDependencies": {
+    "concurrently": "^9.1.0"
+  }
+}
