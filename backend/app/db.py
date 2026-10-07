@@ -58,15 +58,21 @@ def init_db() -> None:
         ensure_demo_activity(s)
 
 
+DEMO_ADMINS = [
+    ("steve@powerconnect.ai", "admin", "Steve Dawson", "PowerConnect.AI"),
+    ("admin@gmail.com", "admin@123", "Admin", "Administrator"),
+]
+
+
 def ensure_demo_admin(s: Session) -> None:
-    """PowerConnect demo login (steve@powerconnect.ai / admin) — added to new and existing databases."""
+    """Demo admin logins (DEMO_ADMINS) — added to new and existing databases."""
     from sqlalchemy import select
     from .auth import hash_password
     from .models import User
-    if not s.scalars(select(User).where(User.email == "steve@powerconnect.ai")).first():
-        s.add(User(email="steve@powerconnect.ai", name="Steve Dawson", title="PowerConnect.AI", role="admin",
-                   password_hash=hash_password("admin")))
-        s.commit()
+    for email, password, name, title in DEMO_ADMINS:
+        if not s.scalars(select(User).where(User.email == email)).first():
+            s.add(User(email=email, name=name, title=title, role="admin", password_hash=hash_password(password)))
+    s.commit()
 
 
 def get_setting(s: Session, key: str, default: str = "") -> str:
