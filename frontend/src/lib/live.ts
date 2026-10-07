@@ -1,7 +1,7 @@
 import { useEffect } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { notifications } from "@mantine/notifications";
-import { tokenStore } from "../api/client";
+import { API_BASE, tokenStore } from "../api/client";
 import { invalidate } from "../api/hooks";
 
 /** Which cached endpoints each server event makes stale. */
@@ -29,7 +29,7 @@ export function useLiveUpdates(enabled: boolean) {
     const flush = () => { invalidate(qc, [...pending]); pending.clear(); timer = undefined; };
 
     const connect = () => {
-      es = new EventSource(`/api/stream?token=${encodeURIComponent(tokenStore.get() ?? "")}`);
+      es = new EventSource(`${API_BASE}/stream?token=${encodeURIComponent(tokenStore.get() ?? "")}`);
       es.onmessage = ev => {
         try {
           const msg = JSON.parse(ev.data) as { type: string; created?: number; detail?: string };

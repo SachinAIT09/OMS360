@@ -2,6 +2,7 @@ import { useState, type ReactNode } from "react";
 import L from "leaflet";
 import { Circle, CircleMarker, MapContainer, Marker, Polyline, Popup, TileLayer, Tooltip } from "react-leaflet";
 import { useComputedColorScheme } from "@mantine/core";
+import { API_BASE } from "../api/client";
 import type { Facility, TrackPoint, Yard } from "../api/types";
 import { dt, FAC_COLOR, fmt, pct, sevColor } from "../lib/format";
 
@@ -34,7 +35,7 @@ export function TerritoryMap({ zones = [], pins = [], facilities, yards, track, 
   return (
     <MapContainer center={center} zoom={zoom} scrollWheelZoom={false} style={{ height, width: "100%" }}>
       <Basemap light={isLight} />
-      {radarLayer && <TileLayer url={`/api/weather/tiles/${radarLayer}/{z}/{x}/{y}.png`} opacity={0.7} attribution="Weather © OpenWeather" />}
+      {radarLayer && <TileLayer url={`${API_BASE}/weather/tiles/${radarLayer}/{z}/{x}/{y}.png`} opacity={0.7} attribution="Weather © OpenWeather" />}
       {zones.map(z => {
         const col = z.restored ? "#3ec46d" : sevColor(z.value);
         return (

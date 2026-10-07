@@ -2,6 +2,9 @@
 
 const TOKEN_KEY = "oms360_token";
 
+/** API root. Same origin by default; VITE_API_URL points a separately hosted UI (Netlify) at the backend. */
+export const API_BASE = `${(import.meta.env.VITE_API_URL ?? "").replace(/\/+$/, "")}/api`;
+
 export const tokenStore = {
   get: () => { try { return localStorage.getItem(TOKEN_KEY); } catch { return null; } },
   set: (t: string | null) => { try { t ? localStorage.setItem(TOKEN_KEY, t) : localStorage.removeItem(TOKEN_KEY); } catch { /* storage blocked */ } },
@@ -15,7 +18,7 @@ export async function request<T>(method: string, path: string, body?: unknown): 
   const token = tokenStore.get();
   let res: Response;
   try {
-    res = await fetch(`/api${path}`, {
+    res = await fetch(`${API_BASE}${path}`, {
       method,
       headers: {
         ...(body !== undefined ? { "Content-Type": "application/json" } : {}),

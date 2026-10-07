@@ -6,7 +6,7 @@ import {
 import { useForm } from "@mantine/form";
 import { useDebouncedValue, useDisclosure } from "@mantine/hooks";
 import { IconArrowsSort, IconBolt, IconDownload, IconMap, IconPlus, IconSearch, IconTable, IconWand } from "@tabler/icons-react";
-import { api, qs, tokenStore } from "../api/client";
+import { API_BASE, api, qs, tokenStore } from "../api/client";
 import { useAction, useGet, useReference } from "../api/hooks";
 import type { Outage, Page } from "../api/types";
 import { useAuth } from "../auth/AuthContext";
@@ -43,7 +43,7 @@ export default function OutagesPage() {
   const dispatch = useAction(() => api.post<{ dispatched: number }>(`/events/${event!.id}/auto-dispatch`), { success: r => `${r.dispatched} tickets dispatched to the nearest idle crews` });
 
   const exportCsv = async () => {
-    const res = await fetch(`/api/outages/export.csv?event_id=${event!.id}`, { headers: { Authorization: `Bearer ${tokenStore.get()}` } });
+    const res = await fetch(`${API_BASE}/outages/export.csv?event_id=${event!.id}`, { headers: { Authorization: `Bearer ${tokenStore.get()}` } });
     const url = URL.createObjectURL(await res.blob());
     const a = document.createElement("a"); a.href = url; a.download = `outages-${event!.name.replace(/\s+/g, "-")}.csv`; a.click(); URL.revokeObjectURL(url);
   };

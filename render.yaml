@@ -1,0 +1,13 @@
+# Render Blueprint: one Docker service serves the React UI and the /api backend at the same URL.
+# Render dashboard → New → Blueprint → pick this repo.
+services:
+  - type: web
+    name: oms360
+    runtime: docker
+    dockerfilePath: ./Dockerfile
+    plan: free
+    healthCheckPath: /api/health
+    autoDeploy: true
+    envVars:
+      - key: OPENWEATHER_API_KEY   # optional: weather radar layer
+        sync: false

@@ -32,7 +32,10 @@ async def lifespan(_: FastAPI):
 
 app = FastAPI(title="OMS360 API", version="2.0.0", lifespan=lifespan,
               description="Storm outage management: events, predictions, outage tickets, crews, mutual aid, ETRs, communications.")
-app.add_middleware(CORSMiddleware, allow_origins=["http://localhost:5173", "http://127.0.0.1:5173"], allow_methods=["*"], allow_headers=["*"])
+# Extra UI origins (e.g. a Netlify site) as a comma-separated list: OMS360_CORS_ORIGINS=https://oms360.netlify.app
+CORS_ORIGINS = ["http://localhost:5173", "http://127.0.0.1:5173",
+                *(o.strip().rstrip("/") for o in os.environ.get("OMS360_CORS_ORIGINS", "").split(",") if o.strip())]
+app.add_middleware(CORSMiddleware, allow_origins=CORS_ORIGINS, allow_methods=["*"], allow_headers=["*"])
 for r in (auth_routes.router, events.router, field.router, engagement.router, admin.router):
     app.include_router(r, prefix="/api")
 
