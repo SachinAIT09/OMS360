@@ -9,9 +9,9 @@ from sqlalchemy.orm import Session
 from .. import bus, serial
 from ..auth import current_user, require
 from ..db import get_session
-from ..models import AuditLog, Message, Outage, PredictionRun, Recommendation, StormEvent, Task, User, utcnow
-from ..services import nhc, ops, recommendations as recs
-from ..services.events import LifecycleError, change_status
+from ..models import AuditLog, ForecastRun, Message, Outage, PredictionRun, Recommendation, StormEvent, Task, User, Zone, utcnow
+from ..services import forecast as fc_svc, nhc, ops, recommendations as recs
+from ..services.events import EVENT_KINDS, RAIN, LifecycleError, change_status
 from ..services.prediction import predict
 
 router = APIRouter(tags=["events"])
@@ -44,7 +44,7 @@ def current_event(s: Session = Depends(get_session), _: User = Depends(current_u
 
 class EventIn(BaseModel):
     name: str = Field(min_length=2, max_length=80)
-    kind: str = "Hurricane"
+    kind: str = "Hurricane"  # one of EVENT_KINDS
     category: int = Field(1, ge=1, le=5)
     max_wind_mph: int = Field(90, ge=20, le=220)
     pressure_mb: int = Field(980, ge=850, le=1030)
@@ -52,17 +52,30 @@ class EventIn(BaseModel):
     lng: float = -85.0
     heading_deg: float = 30
     speed_mph: float = 12
-    landfall_at: datetime | None = None
+    landfall_at: datetime | None = None  # rain events: rain onset
     notes: str = ""
+    rain_total_in: float | None = Field(None, ge=0.5, le=40)
+    rain_rate_in_hr: float | None = Field(None, ge=0.1, le=8)
+    duration_h: float | None = Field(None, ge=1, le=240)
+    soil_saturation: float | None = Field(None, ge=0, le=1)
 
 
 @router.post("/events", status_code=201)
 def create_event(body: EventIn, s: Session = Depends(get_session), user: User = Depends(require("events.manage"))):
+    if body.kind not in EVENT_KINDS:
+        raise HTTPException(422, f"Event type must be one of: {', '.join(EVENT_KINDS)}")
     now = utcnow()
-    e = StormEvent(name=body.name, kind=body.kind, category=body.category, max_wind_mph=body.max_wind_mph, pressure_mb=body.pressure_mb,
-                   lat=body.lat, lng=body.lng, movement=f"{nhc._compass(body.heading_deg)} at {round(body.speed_mph)} mph",
-                   landfall_at=body.landfall_at, notes=body.notes, created_by=user.id,
-                   track=nhc.project_track(body.lat, body.lng, body.heading_deg, body.speed_mph, now))
+    if body.kind == RAIN:
+        # No track or category: a rain event is described by rainfall over the territory.
+        e = StormEvent(name=body.name, kind=body.kind, category=1, max_wind_mph=min(body.max_wind_mph, 39), pressure_mb=body.pressure_mb,
+                       lat=27.95, lng=-82.46, movement="", landfall_at=body.landfall_at, notes=body.notes, created_by=user.id, track=[],
+                       rain_total_in=body.rain_total_in or 4.0, rain_rate_in_hr=body.rain_rate_in_hr or 1.0,
+                       duration_h=body.duration_h or 12, soil_saturation=0.5 if body.soil_saturation is None else body.soil_saturation)
+    else:
+        e = StormEvent(name=body.name, kind=body.kind, category=body.category, max_wind_mph=body.max_wind_mph, pressure_mb=body.pressure_mb,
+                       lat=body.lat, lng=body.lng, movement=f"{nhc._compass(body.heading_deg)} at {round(body.speed_mph)} mph",
+                       landfall_at=body.landfall_at, notes=body.notes, created_by=user.id,
+                       track=nhc.project_track(body.lat, body.lng, body.heading_deg, body.speed_mph, now))
     s.add(e)
     s.flush()
     bus.audit(s, user.name, "event.created", "storm_event", e.id, f"{e.name} created (Monitoring)", e.id)
@@ -77,6 +90,10 @@ class EventPatch(BaseModel):
     pressure_mb: int | None = None
     landfall_at: datetime | None = None
     notes: str | None = None
+    rain_total_in: float | None = Field(None, ge=0.5, le=40)
+    rain_rate_in_hr: float | None = Field(None, ge=0.1, le=8)
+    duration_h: float | None = Field(None, ge=1, le=240)
+    soil_saturation: float | None = Field(None, ge=0, le=1)
 
 
 @router.patch("/events/{event_id}")
@@ -131,18 +148,20 @@ def overview(event_id: int, s: Session = Depends(get_session), _: User = Depends
 
 class PredictIn(BaseModel):
     category: int | None = Field(None, ge=1, le=5)
+    rain_in: float | None = Field(None, ge=0.5, le=40)  # rain events: rainfall scenario
+    use_forecast: bool = True  # with no category / rain_in, use the latest imported forecast per zone
     save: bool = True
 
 
 @router.post("/events/{event_id}/predictions")
 def run_prediction(event_id: int, body: PredictIn, s: Session = Depends(get_session), user: User = Depends(require("predictions.run"))):
     e = get_event(s, event_id)
-    res = predict(s, e, body.category)
+    res = predict(s, e, body.category, body.rain_in, body.use_forecast)
     if not body.save:
         return {"id": None, "category": res["category"], "created_at": utcnow(), "result": res}
     pr = PredictionRun(event_id=e.id, category=res["category"], result=res, created_by=user.id)
     s.add(pr)
-    bus.audit(s, user.name, "prediction.run", "storm_event", e.id, f"Cat {res['category']} prediction: {res['pred_total']:,} customers", e.id)
+    bus.audit(s, user.name, "prediction.run", "storm_event", e.id, f"{res['scenario']} prediction: {res['pred_total']:,} customers", e.id)
     s.commit()
     bus.publish("predictions")
     return _run(pr)
@@ -153,7 +172,7 @@ def predictions(event_id: int, s: Session = Depends(get_session), _: User = Depe
     runs = s.scalars(select(PredictionRun).where(PredictionRun.event_id == event_id).order_by(PredictionRun.id.desc())).all()
     users = {u.id: u.name for u in s.scalars(select(User)).all()}
     return [{"id": r.id, "category": r.category, "created_at": r.created_at, "created_by": users.get(r.created_by, "System"),
-             "pred_total": r.result["pred_total"], "required_line": r.result["required"]["line"]} for r in runs]
+             "scenario": r.result.get("scenario", f"Cat {r.category}"), "pred_total": r.result["pred_total"], "required_line": r.result["required"]["line"]} for r in runs]
 
 
 @router.get("/events/{event_id}/timeline")
@@ -270,3 +289,48 @@ def complete_task(task_id: int, s: Session = Depends(get_session), user: User = 
     s.commit()
     bus.publish("tasks")
     return serial.task(t)
+
+
+# ---------------------------------------------------------------- outside forecasts (parent-company storm model)
+class ForecastIn(BaseModel):
+    source: str = Field(fc_svc.PARENT_SOURCE, min_length=2, max_length=80)
+    issued_at: datetime | None = None
+    zones: list[dict] | None = None  # [{zone, gust_mph, rain_in, surge_ft, arrival_at}]
+    csv: str | None = Field(None, max_length=200_000)
+    mock: bool = False  # sandbox: generate the parent model's output from the event
+
+
+@router.get("/events/{event_id}/forecasts")
+def forecasts(event_id: int, s: Session = Depends(get_session), _: User = Depends(current_user)):
+    get_event(s, event_id)
+    names = {z.id: z.short for z in s.scalars(select(Zone)).all()}
+    rows = s.scalars(select(ForecastRun).where(ForecastRun.event_id == event_id).order_by(ForecastRun.id.desc())).all()
+    return {"latest": fc_svc.serial(rows[0], names) if rows else None,
+            "history": [{"id": r.id, "source": r.source, "issued_at": r.issued_at, "created_by": r.created_by} for r in rows],
+            "sample_csv": fc_svc.SAMPLE_CSV}
+
+
+@router.post("/events/{event_id}/forecasts", status_code=201)
+def import_forecast(event_id: int, body: ForecastIn, s: Session = Depends(get_session), user: User = Depends(require("predictions.run"))):
+    """Import a forecast (JSON rows, CSV text or the sandbox mock feed) and re-run the prediction on it."""
+    e = get_event(s, event_id)
+    try:
+        if body.mock:
+            zones = fc_svc.mock_parent_forecast(s, e, seed=int(utcnow().timestamp()) // 3600)
+        elif body.csv:
+            zones = fc_svc.normalize(s, fc_svc.parse_csv(body.csv))
+        elif body.zones:
+            zones = fc_svc.normalize(s, body.zones)
+        else:
+            raise fc_svc.ForecastError("Send forecast rows, CSV text, or mock: true.")
+    except fc_svc.ForecastError as ex:
+        raise HTTPException(422, str(ex))
+    fc = fc_svc.save(s, e, zones, body.source, user.name, body.issued_at)
+    res = predict(s, e)
+    s.add(PredictionRun(event_id=e.id, category=res["category"], result=res, created_by=user.id))
+    bus.audit(s, user.name, "forecast.imported", "storm_event", e.id,
+              f"{fc.source} forecast for {len(zones)} zones; prediction re-run: {res['pred_total']:,} customers", e.id)
+    s.commit()
+    bus.publish("predictions")
+    names = {z.id: z.short for z in s.scalars(select(Zone)).all()}
+    return fc_svc.serial(fc, names)

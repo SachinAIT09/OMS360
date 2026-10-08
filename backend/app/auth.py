@@ -1,14 +1,17 @@
-"""Authentication (bearer tokens) and role-based permissions."""
+"""Authentication (signed bearer tokens) and role-based permissions."""
+import base64
 import hashlib
 import hmac
+import os
 import secrets
-from datetime import timedelta
+from datetime import datetime, timedelta, timezone
 
 from fastapi import Depends, HTTPException, Query, Request
+from sqlalchemy import delete, select
 from sqlalchemy.orm import Session
 
-from .db import get_session
-from .models import AuthToken, User, utcnow
+from .db import DB_PATH, get_session
+from .models import RevokedToken, User, utcnow
 
 ROLES = {
     "executive": "Executive",
@@ -54,21 +57,73 @@ def permissions_for(role: str) -> list[str]:
     return sorted(p for p, roles in PERMISSIONS.items() if role in roles)
 
 
+def _load_secret() -> bytes:
+    """OMS360_SECRET in production (Render generates one), so tokens outlive restarts that wipe the database.
+    Locally, a random secret kept next to the database."""
+    if env := os.environ.get("OMS360_SECRET"):
+        return env.encode()
+    path = DB_PATH.parent / ".token_secret"
+    try:
+        return path.read_bytes()
+    except OSError:
+        key = secrets.token_hex(32).encode()
+        try:
+            path.write_bytes(key)
+        except OSError:
+            pass
+        return key
+
+
+SECRET = _load_secret()
+
+
+def _b64(b: bytes) -> str:
+    return base64.urlsafe_b64encode(b).rstrip(b"=").decode()
+
+
+def _sign(payload: str) -> str:
+    return _b64(hmac.new(SECRET, payload.encode(), hashlib.sha256).digest())
+
+
 def issue_token(s: Session, user: User) -> str:
-    token = secrets.token_urlsafe(32)
-    s.add(AuthToken(token=token, user_id=user.id, expires_at=utcnow() + TOKEN_TTL))
+    """`<payload>.<sig>` where payload is email|expiry|token id. Holds the email, not the user id, because a
+    free-tier restart reseeds the database and ids may change."""
+    exp = int((utcnow() + TOKEN_TTL).timestamp())
+    payload = _b64(f"{user.email}|{exp}|{secrets.token_hex(8)}".encode())
     user.last_login_at = utcnow()
     s.commit()
-    return token
+    return f"{payload}.{_sign(payload)}"
+
+
+def parse_token(token: str | None) -> tuple[str, datetime, str] | None:
+    """(email, expires_at, jti) for a genuine, unexpired token."""
+    if not token or token.count(".") != 1:
+        return None
+    payload, sig = token.split(".")
+    if not hmac.compare_digest(sig, _sign(payload)):
+        return None
+    try:
+        email, exp, jti = base64.urlsafe_b64decode(payload + "=" * (-len(payload) % 4)).decode().split("|")
+        expires = datetime.fromtimestamp(int(exp), timezone.utc)
+    except ValueError:
+        return None
+    return (email, expires, jti) if expires > utcnow() else None
+
+
+def revoke_token(s: Session, token: str | None) -> None:
+    parsed = parse_token(token)
+    if parsed and not s.get(RevokedToken, parsed[2]):
+        s.execute(delete(RevokedToken).where(RevokedToken.expires_at < utcnow()))
+        s.add(RevokedToken(jti=parsed[2], expires_at=parsed[1]))
+        s.commit()
 
 
 def user_from_token(s: Session, token: str | None) -> User | None:
-    if not token:
+    parsed = parse_token(token)
+    if not parsed or s.get(RevokedToken, parsed[2]):
         return None
-    row = s.get(AuthToken, token)
-    if not row or row.expires_at < utcnow() or not row.user.active:
-        return None
-    return row.user
+    user = s.scalars(select(User).where(User.email == parsed[0])).first()
+    return user if user and user.active else None
 
 
 def _bearer(request: Request) -> str | None:

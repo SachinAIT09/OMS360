@@ -28,6 +28,15 @@ for _z in ZONES:
     _z.setdefault("med", False)
 
 ZONE_BY_ID = {z["id"]: z for z in ZONES}
+
+# Operating regions: groups of zones that share a district office and crew pool.
+REGIONS = [
+    {"id": "north", "name": "North", "zones": ["tnc", "wch", "cwd", "ltz"]},
+    {"id": "central", "name": "Central", "zones": ["tpa", "ttr"]},
+    {"id": "east", "name": "East", "zones": ["brn", "val", "plc"]},
+    {"id": "south", "name": "South Shore", "zones": ["rvv", "apb", "rsk", "scc"]},
+]
+SUBSTATION_SIDES = [("North", 0.02, 0.0), ("South", -0.02, 0.0), ("East", 0.0, 0.025), ("West", 0.0, -0.025)]
 TOTAL_CUST = sum(z["cust"] for z in ZONES)
 TOTAL_WATER = sum(z["water"] for z in ZONES)
 
@@ -97,5 +106,11 @@ SAMPLE_ADDRESSES = [
     ("1802 Cortaro Dr, Sun City Center", "scc"),
     ("3305 James L Redman Pkwy, Plant City", "plc"),
 ]
+
+def address_feeder(address: str, feeder_ids: list[str]) -> str:
+    """Sandbox stand-in for the GIS customer→circuit lookup: a stable circuit for each address within its zone."""
+    import zlib
+    return sorted(feeder_ids)[zlib.crc32(address.lower().encode()) % len(feeder_ids)]
+
 
 TAMPA = {"lat": 27.9506, "lon": -82.4572}

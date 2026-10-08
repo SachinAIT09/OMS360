@@ -19,7 +19,7 @@ const STARTERS = [
   { label: "Hardest-hit areas", prompt: "Which areas will be hit hardest?", icon: IconBolt, color: "orange" },
   { label: "Waiting for approval", prompt: "What's waiting for approval?", icon: IconChecklist, color: "ai" },
 ];
-const MORE_PROMPTS = ["When will Riverview be restored?", "What if it becomes a Cat 4?", "How many tickets are unassigned?", "Are the hospitals at risk?",
+const MORE_PROMPTS = ["When will Riverview be restored?", "What if it becomes a Cat 4?", "What if it brings 10 inches of rain?", "What are the ETRs in the South Shore region?", "How many tickets are unassigned?", "Are the hospitals at risk?",
   "What about the water system?", "Draft a post for Brandon customers", "How much will this storm cost?", "Where is the storm now?"];
 
 /** `null` = the user's most recent conversation, 0 = a fresh one, otherwise a specific conversation. */

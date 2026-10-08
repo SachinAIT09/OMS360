@@ -14,7 +14,7 @@ import { Empty, ErrorState, Loading, PageHeader, SectionTitle, Stat } from "../c
 import { EventLifecycle } from "../components/EventLifecycle";
 import { RecommendationCard } from "../components/RecommendationCard";
 import { MapLegend, TerritoryMap } from "../components/TerritoryMap";
-import { ago, dt, dtShort, fmt, hoursUntil, pct, sevColor } from "../lib/format";
+import { ago, dt, dtShort, fmt, hoursUntil, impactWord, intensity, isRain, pct, scenario, sevColor } from "../lib/format";
 
 export default function OverviewPage() {
   const { event } = useCurrentEvent();
@@ -47,14 +47,14 @@ export default function OverviewPage() {
     : (p?.zones ?? []).map(z => {
         const zr = ref.data.zones.find(x => x.id === z.id)!;
         return { id: z.id, short: z.short, lat: zr.lat, lng: zr.lng, customers: z.customers, value: z.pct,
-          popup: <div><b>{z.name}</b><br />Predicted {fmt(z.pred)} out ({pct(z.pct)})<br />{z.driver}<br />Restoration ~{z.eta_h} h after landfall</div> };
+          popup: <div><b>{z.name}</b><br />Predicted {fmt(z.pred)} out ({pct(z.pct)})<br />{z.driver}<br />Restoration ~{z.eta_h} h after {impactWord(e)}</div> };
       });
 
   return (
     <>
       <PageHeader title={e.name} badge={<EventStatusBadge status={e.status} size="lg" />}
-        description={<>{e.kind} · Cat {e.category} · {e.max_wind_mph} mph · {e.pressure_mb} mb{e.movement && ` · moving ${e.movement}`}
-          {e.landfall_at && <> · landfall {dt(e.landfall_at)}{h != null && h > 0 && <Text span c="yellow.4" fw={600}> (in {Math.round(h)} h)</Text>}</>}</>}
+        description={<>{e.kind} · {intensity(e)}{!isRain(e) && ` · ${e.pressure_mb} mb`}{e.movement && ` · moving ${e.movement}`}
+          {e.landfall_at && <> · {impactWord(e)} {dt(e.landfall_at)}{h != null && h > 0 && <Text span c="yellow.4" fw={600}> (in {Math.round(h)} h)</Text>}</>}</>}
         actions={<><Button variant="default" onClick={() => go(`/events/${e.id}`)}>Event details</Button><EventLifecycle event={e} /></>} />
 
       <SimpleGrid cols={{ base: 2, md: 3, xl: 6 }} mb="lg">
@@ -66,10 +66,10 @@ export default function OverviewPage() {
           <Stat label="Last zone restored by" value={st.last_etr_at ? dtShort(st.last_etr_at) : "—"} icon={<IconClock size={16} />} hint="AI ETR from open tickets" onClick={() => go("/restoration")} />
           <Stat label="ETRs published" value={`${st.published_zones} / ${st.zones.filter(z => z.open_tickets).length || 0}`} hint="zones visible to customers" color={st.published_zones ? "teal" : "yellow"} onClick={() => go("/restoration")} />
         </> : <>
-          <Stat label="Predicted peak outages" value={p ? fmt(p.pred_total) : "—"} color="red" icon={<IconBolt size={16} />} hint={p ? `${pct(p.pred_total / p.total_customers)} of customers · Cat ${p.category}` : "run a prediction"} onClick={() => go(`/events/${e.id}?tab=prediction`)} />
+          <Stat label="Predicted peak outages" value={p ? fmt(p.pred_total) : "—"} color="red" icon={<IconBolt size={16} />} hint={p ? `${pct(p.pred_total / p.total_customers)} of customers · ${scenario(p)}` : "run a prediction"} onClick={() => go(`/events/${e.id}?tab=prediction`)} />
           <Stat label="Line workers" value={p ? `${fmt(p.internal.line + p.committed.line)} / ${fmt(p.required.line)}` : "—"} icon={<IconUsers size={16} />} color={p && p.needed.line > 0 ? "orange" : "teal"}
             hint={p ? (p.needed.line > 0 ? `gap ${fmt(p.needed.line)} — request mutual aid` : "requirement covered") : undefined} progress={p ? (p.internal.line + p.committed.line) / p.required.line : undefined} onClick={() => go("/crews")} />
-          <Stat label="Avg restoration" value={p ? `${Math.round(p.avg_eta_h)} h` : "—"} icon={<IconClock size={16} />} hint={p ? `95% by ${p.p95_eta_h} h after landfall` : undefined} />
+          <Stat label="Avg restoration" value={p ? `${Math.round(p.avg_eta_h)} h` : "—"} icon={<IconClock size={16} />} hint={p ? `95% by ${p.p95_eta_h} h after ${impactWord(e)}` : undefined} />
           <Stat label="Critical facilities at risk" value={p ? p.critical_at_risk : "—"} icon={<IconBuildingHospital size={16} />} color="red" hint="hospitals, water, EOC, shelters" />
           <Stat label="Lift stations at risk" value={p ? p.lift_stations_at_risk : "—"} icon={<IconDroplet size={16} />} color="cyan" hint={p ? `${p.generators_needed} generators recommended` : undefined} />
           <Stat label="Awaiting decision" value={open.length + ov.data.pending_messages} icon={<IconSparkles size={16} />} color="ai" hint={`${open.length} recommendations · ${ov.data.pending_messages} messages`} />
@@ -112,7 +112,7 @@ export default function OverviewPage() {
           ) : (
             <Card padding={0}>
               <Group p="md" pb="xs" justify="space-between"><Text fw={600}>Predicted outages by zone</Text>
-                {prediction && <Text size="xs" c="dimmed">Prediction run {ago(prediction.created_at)} · Cat {prediction.category}</Text>}</Group>
+                {prediction && <Text size="xs" c="dimmed">Prediction run {ago(prediction.created_at)} · {scenario(prediction.result)}</Text>}</Group>
               {p ? (
                 <Table>
                   <Table.Thead><Table.Tr><Table.Th>Zone</Table.Th><Table.Th ta="right">Customers</Table.Th><Table.Th ta="right">Predicted out</Table.Th><Table.Th w={140} /><Table.Th>Main driver</Table.Th><Table.Th ta="right">Restore</Table.Th></Table.Tr></Table.Thead>

@@ -4,9 +4,9 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from .. import bus, serial
-from ..auth import ROLES, current_user, issue_token, verify_password
+from ..auth import ROLES, current_user, issue_token, revoke_token, verify_password
 from ..db import get_session
-from ..models import AuthToken, User
+from ..models import User
 
 router = APIRouter(prefix="/auth", tags=["auth"])
 
@@ -34,11 +34,7 @@ def me(user: User = Depends(current_user)):
 
 @router.post("/logout")
 def logout(request: Request, user: User = Depends(current_user), s: Session = Depends(get_session)):
-    token = request.headers.get("Authorization", "")[7:]
-    row = s.get(AuthToken, token)
-    if row:
-        s.delete(row)
-        s.commit()
+    revoke_token(s, request.headers.get("Authorization", "")[7:])
     return {"ok": True}
 
 

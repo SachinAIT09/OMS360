@@ -13,8 +13,9 @@ import { useAuth } from "../auth/AuthContext";
 import { EventStatusBadge } from "../components/badges";
 import { ErrorState, Loading, PageHeader, SectionTitle, Stat } from "../components/common";
 import { EventLifecycle } from "../components/EventLifecycle";
+import { ForecastCard, PredictedEtrTables } from "../components/PredictionNetwork";
 import { MapLegend, TerritoryMap } from "../components/TerritoryMap";
-import { ago, dt, fmt, pct, sevColor } from "../lib/format";
+import { ago, dt, fmt, impactWord, isRain, pct, scenario, sevColor } from "../lib/format";
 
 type Detail = StormEvent & { prediction: PredictionRun | null; stats: EventStats };
 
@@ -52,14 +53,27 @@ function StormTab({ e }: { e: Detail }) {
   const [wind, setWind] = useState<number | string>(e.max_wind_mph);
   const [lf, setLf] = useState<Date | null>(e.landfall_at ? new Date(e.landfall_at) : null);
   const [notes, setNotes] = useState(e.notes);
-  const save = useAction(() => api.patch(`/events/${e.id}`, { category: Number(cat), max_wind_mph: Number(wind), landfall_at: lf?.toISOString() ?? null, notes }),
+  const rain = isRain(e);
+  const [rainIn, setRainIn] = useState<number | string>(e.rain_total_in ?? 4);
+  const [rate, setRate] = useState<number | string>(e.rain_rate_in_hr ?? 1);
+  const [sat, setSat] = useState<number | string>(Math.round((e.soil_saturation ?? 0.5) * 100));
+  const save = useAction(() => api.patch(`/events/${e.id}`, rain
+    ? { rain_total_in: Number(rainIn), rain_rate_in_hr: Number(rate), soil_saturation: Number(sat) / 100, landfall_at: lf?.toISOString() ?? null, notes }
+    : { category: Number(cat), max_wind_mph: Number(wind), landfall_at: lf?.toISOString() ?? null, notes }),
     { success: "Event updated" });
+  const params: [string, string][] = rain
+    ? [["Type", e.kind], ["Rainfall forecast", `${e.rain_total_in ?? "—"} in`], ["Peak rate", `${e.rain_rate_in_hr ?? "—"} in/hr`],
+       ["Duration", `${e.duration_h ?? "—"} h`], ["Soil saturation", pct(e.soil_saturation)], ["Rain onset", dt(e.landfall_at)],
+       ["Activated", dt(e.activated_at)], ["Closed", dt(e.closed_at)]]
+    : [["Type", e.kind], ["Category", `Cat ${e.category}`], ["Max sustained wind", `${e.max_wind_mph} mph`], ["Pressure", `${e.pressure_mb} mb`],
+       ["Position", `${e.lat.toFixed(1)}°, ${e.lng.toFixed(1)}°`], ["Movement", e.movement || "—"], ["Landfall", dt(e.landfall_at)],
+       ["Activated", dt(e.activated_at)], ["Closed", dt(e.closed_at)]];
   return (
     <Grid gutter="lg">
       <Grid.Col span={{ base: 12, lg: 8 }}>
         <Card padding="sm">
-          <TerritoryMap track={e.track} zones={[]} facilities={ref.data?.facilities} center={[e.track?.[0]?.lat ?? e.lat, e.track?.[0]?.lng ?? e.lng]} zoom={6} height={520} />
-          <Text size="xs" c="dimmed" mt={6}>White = observed track · amber dashed = forecast track · rings widen with forecast uncertainty.</Text>
+          <TerritoryMap track={e.track} zones={[]} facilities={ref.data?.facilities} center={[e.track?.[0]?.lat ?? e.lat, e.track?.[0]?.lng ?? e.lng]} zoom={rain ? 9 : 6} height={520} />
+          <Text size="xs" c="dimmed" mt={6}>{rain ? "Rain events cover the whole service territory; critical facilities shown." : "White = observed track · amber dashed = forecast track · rings widen with forecast uncertainty."}</Text>
         </Card>
       </Grid.Col>
       <Grid.Col span={{ base: 12, lg: 4 }}>
@@ -67,18 +81,20 @@ function StormTab({ e }: { e: Detail }) {
           <Card>
             <SectionTitle>Current parameters</SectionTitle>
             <Table fz="sm" verticalSpacing={6}><Table.Tbody>
-              {([["Type", e.kind], ["Category", `Cat ${e.category}`], ["Max sustained wind", `${e.max_wind_mph} mph`], ["Pressure", `${e.pressure_mb} mb`],
-                 ["Position", `${e.lat.toFixed(1)}°, ${e.lng.toFixed(1)}°`], ["Movement", e.movement || "—"], ["Landfall", dt(e.landfall_at)],
-                 ["Activated", dt(e.activated_at)], ["Closed", dt(e.closed_at)]] as [string, string][]).map(([k, v]) =>
+              {params.map(([k, v]) =>
                 <Table.Tr key={k}><Table.Td c="dimmed">{k}</Table.Td><Table.Td fw={500} ta="right">{v}</Table.Td></Table.Tr>)}
             </Table.Tbody></Table>
           </Card>
           {can("events.manage") && e.status !== "closed" && (
             <Card>
-              <SectionTitle>Update from latest advisory</SectionTitle>
+              <SectionTitle>{rain ? "Update from latest rainfall forecast" : "Update from latest advisory"}</SectionTitle>
               <Stack gap="xs">
-                <Group grow><NumberInput label="Category" min={1} max={5} value={cat} onChange={setCat} /><NumberInput label="Max wind (mph)" value={wind} onChange={setWind} /></Group>
-                <DateTimePicker label="Expected landfall" value={lf} onChange={setLf} clearable valueFormat="ddd MMM D, h:mm A" />
+                {rain ? <Group grow>
+                  <NumberInput label="Rainfall (in)" min={0.5} max={40} decimalScale={1} value={rainIn} onChange={setRainIn} />
+                  <NumberInput label="Peak (in/hr)" min={0.1} max={8} decimalScale={1} step={0.25} value={rate} onChange={setRate} />
+                  <NumberInput label="Soil" min={0} max={100} suffix="%" value={sat} onChange={setSat} />
+                </Group> : <Group grow><NumberInput label="Category" min={1} max={5} value={cat} onChange={setCat} /><NumberInput label="Max wind (mph)" value={wind} onChange={setWind} /></Group>}
+                <DateTimePicker label={rain ? "Rain onset" : "Expected landfall"} value={lf} onChange={setLf} clearable valueFormat="ddd MMM D, h:mm A" />
                 <Textarea label="Notes" autosize minRows={2} value={notes} onChange={ev => setNotes(ev.currentTarget.value)} />
                 <Button onClick={() => save.mutate()} loading={save.isPending}>Save changes</Button>
               </Stack>
@@ -94,10 +110,13 @@ function StormTab({ e }: { e: Detail }) {
 function PredictionTab({ e }: { e: Detail }) {
   const { can } = useAuth();
   const ref = useReference();
-  const runs = useGet<{ id: number; category: number; created_at: string; created_by: string; pred_total: number; required_line: number }[]>(`/events/${e.id}/predictions`);
-  const [cat, setCat] = useState(String(e.prediction?.category ?? e.category));
+  const runs = useGet<{ id: number; category: number; scenario?: string; created_at: string; created_by: string; pred_total: number; required_line: number }[]>(`/events/${e.id}/predictions`);
+  const rain = isRain(e);
+  const hasForecast = !!e.prediction?.result.forecast;
+  const [cat, setCat] = useState(hasForecast ? "fc" : String(rain ? e.prediction?.result.rain_in ?? e.rain_total_in ?? 4 : e.prediction?.category ?? e.category));
   const [preview, setPreview] = useState<PredictionRun | null>(null);
-  const run = useAction((save: boolean) => api.post<PredictionRun>(`/events/${e.id}/predictions`, { category: Number(cat), save }),
+  const run = useAction((save: boolean) => api.post<PredictionRun>(`/events/${e.id}/predictions`,
+    cat === "fc" ? { save } : rain ? { rain_in: Number(cat), save } : { category: Number(cat), save }),
     { success: r => r.id ? `Prediction saved: ${fmt(r.result.pred_total)} customers` : "Scenario calculated (not saved)", invalidate: ["/events"] });
   const shown = preview ?? e.prediction;
   const p = shown?.result;
@@ -108,11 +127,15 @@ function PredictionTab({ e }: { e: Detail }) {
         <Group justify="space-between" wrap="wrap">
           <Group gap="lg">
             <div>
-              <Text size="sm" fw={600}>Scenario: intensity at landfall</Text>
-              <SegmentedControl mt={6} value={cat} onChange={setCat} data={["1", "2", "3", "4", "5"].map(c => ({ value: c, label: `Cat ${c}` }))} />
+              <Text size="sm" fw={600}>{rain ? "Scenario: total rainfall" : "Scenario: intensity at landfall"}</Text>
+              <SegmentedControl mt={6} value={cat} onChange={setCat}
+                data={[...(hasForecast || cat === "fc" ? [{ value: "fc", label: "Parent forecast" }] : []),
+                  ...(rain ? [...new Set(["2", "4", "6", "8", "12", cat])].filter(r => r !== "fc").sort((a, b) => Number(a) - Number(b)).map(r => ({ value: r, label: `${r} in` }))
+                    : ["1", "2", "3", "4", "5"].map(c => ({ value: c, label: `Cat ${c}` })))]} />
             </div>
-            <Text size="sm" c="dimmed" maw={460}>Model inputs: forecast wind and surge, zone vulnerability, feeder overhead exposure and vegetation cycle, rostered crews and mutual aid requested,
-              calibrated on Irma (2017), Ian (2022) and Milton (2024) damage in the territory.</Text>
+            <Text size="sm" c="dimmed" maw={460}>{rain
+              ? "Model inputs: forecast rainfall, peak rate and soil saturation, zone flood exposure and tree canopy, feeder overhead exposure, rostered crews and mutual aid requested."
+              : "Model inputs: forecast wind and surge, zone vulnerability, feeder overhead exposure and vegetation cycle, rostered crews and mutual aid requested, calibrated on Irma (2017), Ian (2022) and Milton (2024) damage in the territory."}</Text>
           </Group>
           {can("predictions.run") && (
             <Group gap="xs">
@@ -121,16 +144,17 @@ function PredictionTab({ e }: { e: Detail }) {
             </Group>
           )}
         </Group>
-        {preview && <Alert mt="sm" color="yellow" p="xs">Showing an unsaved Cat {preview.category} scenario. <Button size="compact-xs" variant="subtle" onClick={() => setPreview(null)}>Back to saved prediction</Button></Alert>}
+        {preview && <Alert mt="sm" color="yellow" p="xs">Showing an unsaved {scenario(preview.result)} scenario. <Button size="compact-xs" variant="subtle" onClick={() => setPreview(null)}>Back to saved prediction</Button></Alert>}
       </Card>
+      <ForecastCard eventId={e.id} rain={rain} canRun={can("predictions.run")} />
 
       {!p ? <Card><Text c="dimmed">No prediction yet.</Text></Card> : <>
         <SimpleGrid cols={{ base: 2, md: 3, xl: 6 }}>
           <Stat label="Predicted peak" value={fmt(p.pred_total)} color="red" hint={`${pct(p.pred_total / p.total_customers)} of customers`} />
           <Stat label="Line workers needed" value={fmt(p.required.line)} hint={`${fmt(p.internal.line)} rostered · ${fmt(p.committed.line)} requested`} />
           <Stat label="Still to request" value={fmt(p.needed.line)} color={p.needed.line ? "orange" : "teal"} hint={`+ ${fmt(p.needed.tree)} tree, ${fmt(p.needed.da)} assessors`} />
-          <Stat label="95% restored" value={`${p.p95_eta_h} h`} hint={`avg ${Math.round(p.avg_eta_h)} h after landfall`} />
-          <Stat label="Model confidence" value={`${p.confidence}%`} color="ai" hint="back-tested MAPE 11%" />
+          <Stat label="95% restored" value={`${p.p95_eta_h} h`} hint={`avg ${Math.round(p.avg_eta_h)} h after ${impactWord(e)}`} />
+          <Stat label="Model confidence" value={`${p.confidence}%`} color="ai" hint={p.forecast ? `on ${p.forecast.source}` : "back-tested MAPE 11%"} />
           <Stat label="Water customers at risk" value={fmt(p.water_customers_at_risk)} color="cyan" hint={`${p.lift_stations_at_risk} lift stations`} />
         </SimpleGrid>
         <Grid gutter="lg">
@@ -150,13 +174,15 @@ function PredictionTab({ e }: { e: Detail }) {
                 <Table.Thead><Table.Tr><Table.Th>Zone</Table.Th><Table.Th ta="right">Predicted out</Table.Th><Table.Th ta="right">%</Table.Th><Table.Th>Driver</Table.Th><Table.Th ta="right">Restore</Table.Th></Table.Tr></Table.Thead>
                 <Table.Tbody>{[...p.zones].sort((a, b) => b.pred - a.pred).map(z => (
                   <Table.Tr key={z.id}><Table.Td>{z.short}</Table.Td><Table.Td ta="right" className="tabular">{fmt(z.pred)}</Table.Td>
-                    <Table.Td ta="right" fw={600} c={sevColor(z.pct)}>{pct(z.pct)}</Table.Td><Table.Td><Text size="xs" c="dimmed">{z.driver}</Text></Table.Td>
+                    <Table.Td ta="right" fw={600} c={sevColor(z.pct)}>{pct(z.pct)}</Table.Td><Table.Td><Text size="xs" c="dimmed">{z.driver}</Text>
+                      {z.hazard && <Text size="xs" c="dimmed">{rain ? `${z.hazard.rain_in} in rain` : `gust ${Math.round(z.hazard.gust_mph ?? 0)} mph${z.hazard.surge_ft ? ` · surge ${z.hazard.surge_ft} ft` : ""}`}</Text>}</Table.Td>
                     <Table.Td ta="right">{z.eta_h} h</Table.Td></Table.Tr>))}
                 </Table.Tbody>
               </Table>
             </Card>
           </Grid.Col>
         </Grid>
+        <PredictedEtrTables p={p} impactAt={e.landfall_at} impactWord={impactWord(e)} />
         <Card>
           <SectionTitle right={<Badge color="red" variant="light">Top 8 feeders = {pct(p.feeders.slice(0, 8).reduce((s, f) => s + f.pred, 0) / p.pred_total)} of predicted impact</Badge>}>
             80 / 20 — feeders driving the impact
@@ -206,7 +232,7 @@ function PredictionTab({ e }: { e: Detail }) {
         <Table mt="xs">
           <Table.Thead><Table.Tr><Table.Th>Run</Table.Th><Table.Th>Scenario</Table.Th><Table.Th ta="right">Predicted out</Table.Th><Table.Th ta="right">Line workers needed</Table.Th><Table.Th>By</Table.Th></Table.Tr></Table.Thead>
           <Table.Tbody>{(runs.data ?? []).map((r, i) => (
-            <Table.Tr key={r.id}><Table.Td>{dt(r.created_at)} {i === 0 && <Badge size="xs" ml={4}>current</Badge>}</Table.Td><Table.Td>Cat {r.category}</Table.Td>
+            <Table.Tr key={r.id}><Table.Td>{dt(r.created_at)} {i === 0 && <Badge size="xs" ml={4}>current</Badge>}</Table.Td><Table.Td>{r.scenario ?? `Cat ${r.category}`}</Table.Td>
               <Table.Td ta="right" className="tabular">{fmt(r.pred_total)}</Table.Td><Table.Td ta="right" className="tabular">{fmt(r.required_line)}</Table.Td><Table.Td>{r.created_by}</Table.Td></Table.Tr>))}
           </Table.Tbody>
         </Table>

@@ -105,7 +105,7 @@ export default function OutagesPage() {
                   <Table.Td ta="right" className="tabular" fw={500}>{fmt(o.customers)}</Table.Td>
                   <Table.Td>{o.crew ? <Badge variant="outline" color="blue">{o.crew.code}</Badge> : <Text size="xs" c="dimmed">Unassigned</Text>}</Table.Td>
                   <Table.Td>{o.status === "restored" ? <Text size="sm" c="teal">Restored {dtShort(o.restored_at)}</Text> :
-                    <><Text size="sm">{dtShort(o.etr_at)}</Text><Text size="xs" c="dimmed">{o.etr_committed ? (o.etr_override ? "manual" : "committed") : "AI estimate"}</Text></>}</Table.Td>
+                    <><Text size="sm">{dtShort(o.etr_at)}</Text><Text size="xs" c="dimmed">{o.etr_committed ? (o.etr_override ? "manual" : "committed") : "AI estimate"}{o.etr_confidence != null && ` · ${o.etr_confidence}%`}</Text></>}</Table.Td>
                   <Table.Td><Text size="sm">{ago(o.reported_at)}</Text></Table.Td>
                 </Table.Tr>))}
               </Table.Tbody>

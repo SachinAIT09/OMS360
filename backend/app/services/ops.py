@@ -7,16 +7,26 @@ ETR model
                        now + travel + (cumulative job hours ≤ k) ÷ effective crews in zone
   effective crews    = crews already working the zone + share of idle crews ∝ zone backlog
   zone ETR           = when the last open ticket in the zone is expected to be restored
+  circuit ETR        = when the last open ticket on the circuit (feeder) is expected to be restored
+  region ETR         = the latest circuit ETR in the region
+
+Confidence (circuit)
+  ticket confidence  = how settled each ticket's ETR is: manual override 92, crew working 88, crew assigned 80,
+                       damage assessed 68, reported / damage unknown 55
+  circuit confidence = mean ticket confidence − queue depth (2 per extra open ticket, max 12)
+                       − zone track record (2 × past mean ETR miss in hours, max 10) + 5 if idle crews remain
+                       clamped to 30–95. Region confidence is the customer-weighted mean of its circuits.
 """
 import math
 from collections import defaultdict
 from datetime import datetime, timedelta
 
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from .. import bus
-from ..models import Crew, Facility, MutualAidRequest, Outage, OutageEvent, PublishedEtr, StormEvent, Zone, utcnow
+from ..models import (Crew, Facility, Feeder, MutualAidRequest, Outage, OutageEvent, PublishedCircuitEtr, PublishedEtr, Region,
+                      StormEvent, Substation, Zone, utcnow)
 
 OPEN = ("reported", "assessed", "assigned", "in_progress")
 JOB_HOURS = {"service": 1.5, "conductor": 3.0, "transformer": 4.0, "pole": 6.0, "none": 1.0, "unknown": 3.0}
@@ -84,6 +94,105 @@ def zone_etrs(s: Session, event: StormEvent, now: datetime | None = None) -> dic
                     "confidence": int(min(95, 60 + 30 * assessed + (5 if idle else 0))),
                     "open": len(ts), "customers_out": sum(t.customers for t in ts)}
     return out
+
+
+def ticket_confidence(o: Outage) -> int:
+    """How settled one ticket's ETR is (see module docstring)."""
+    if o.etr_override:
+        return 92
+    if o.status == "in_progress":
+        return 88
+    if o.status == "assigned":
+        return 80
+    if o.status == "assessed" and o.damage != "unknown":
+        return 68
+    return 55
+
+
+def network_index(s: Session) -> dict[str, dict]:
+    """feeder id → its substation, zone and region (ids and names)."""
+    zones = {z.id: z for z in s.scalars(select(Zone)).all()}
+    regions = {r.id: r.name for r in s.scalars(select(Region)).all()}
+    subs = {x.id: x for x in s.scalars(select(Substation)).all()}
+    out = {}
+    for f in s.scalars(select(Feeder)).all():
+        z = zones[f.zone_id]
+        sub = subs.get(f.substation_id)
+        out[f.id] = {"customers": f.customers, "substation_id": f.substation_id, "substation": sub.name if sub else None,
+                     "lat": sub.lat if sub else z.lat, "lng": sub.lng if sub else z.lng,
+                     "zone_id": z.id, "zone": z.short, "region_id": z.region_id, "region": regions.get(z.region_id)}
+    return out
+
+
+def zone_track_record(s: Session) -> dict[str, float]:
+    """Mean absolute ETR miss (hours) per zone across closed events: how far past ETRs in the zone were off."""
+    rows = s.execute(select(Outage.zone_id, Outage.restored_at, Outage.etr_at).join(StormEvent, StormEvent.id == Outage.event_id)
+                     .where(StormEvent.status == "closed", Outage.restored_at.is_not(None), Outage.etr_at.is_not(None))).all()
+    errs: dict[str, list[float]] = defaultdict(list)
+    for zid, restored, etr in rows:
+        errs[zid].append(abs((restored - etr).total_seconds()) / 3600)
+    return {z: sum(v) / len(v) for z, v in errs.items()}
+
+
+def network_etrs(s: Session, event: StormEvent, zetrs: dict | None = None) -> dict:
+    """Circuit and region ETRs with confidence, for publishing restoration times to smaller areas."""
+    zetrs = zetrs if zetrs is not None else zone_etrs(s, event)
+    ticket_etr = {tid: etr for z in zetrs.values() for tid, etr in z["tickets"].items()}
+    tickets = s.scalars(select(Outage).where(Outage.event_id == event.id, Outage.status.in_(OPEN))).all()
+    idx = network_index(s)
+    record = zone_track_record(s)
+    idle = s.scalar(select(func.count(Crew.id)).where(Crew.status.in_(["available", "staged"]), Crew.kind == "line")) or 0
+    published = {p.feeder_id: p for p in s.scalars(select(PublishedCircuitEtr).where(PublishedCircuitEtr.event_id == event.id)).all()}
+
+    by_circuit: dict[str, list[Outage]] = defaultdict(list)
+    for t in tickets:
+        by_circuit[t.feeder_id].append(t)
+    circuits = []
+    for fid, ts in by_circuit.items():
+        info = idx.get(fid) or {"customers": None, "substation_id": None, "substation": None, "lat": ts[0].lat, "lng": ts[0].lng,
+                                "zone_id": ts[0].zone_id, "zone": ts[0].zone_id, "region_id": None, "region": None}
+        etrs = [ticket_etr[t.id] for t in ts if t.id in ticket_etr]
+        conf = (sum(ticket_confidence(t) for t in ts) / len(ts) - min(12, 2 * (len(ts) - 1))
+                - min(10, 2 * record.get(info["zone_id"], 0)) + (5 if idle and any(t.status in ("reported", "assessed") for t in ts) else 0))
+        pub = published.get(fid)
+        circuits.append({"id": fid, **info, "customers_out": sum(t.customers for t in ts), "open_tickets": len(ts),
+                         "crews": len({t.crew_id for t in ts if t.crew_id}), "etr_at": _round30(max(etrs)) if etrs else None,
+                         "confidence": int(max(30, min(95, round(conf)))), "published": pub is not None,
+                         "published_at": pub.published_at if pub else None})
+    circuits.sort(key=lambda c: (c["etr_at"] is None, c["etr_at"]), reverse=True)
+
+    regions = []
+    for r in s.scalars(select(Region).order_by(Region.id)).all():
+        cs = [c for c in circuits if c["region_id"] == r.id]
+        out = sum(c["customers_out"] for c in cs)
+        regions.append({"id": r.id, "name": r.name, "zones": [z.short for z in s.scalars(select(Zone).where(Zone.region_id == r.id))],
+                        "customers_out": out, "open_tickets": sum(c["open_tickets"] for c in cs), "circuits_out": len(cs),
+                        "etr_at": max((c["etr_at"] for c in cs if c["etr_at"]), default=None),
+                        "confidence": round(sum(c["confidence"] * c["customers_out"] for c in cs) / out) if out else None,
+                        "circuits_published": sum(1 for c in cs if c["published"]),
+                        "circuits_ready": sum(1 for c in cs if not c["published"] and c["confidence"] >= PUBLISH_CONFIDENCE)})
+    return {"circuits": circuits, "regions": regions}
+
+
+PUBLISH_CONFIDENCE = 80  # default bar for publishing a circuit ETR to customers
+
+
+def etr_accuracy(s: Session, event: StormEvent) -> dict:
+    """After the fact: how close committed ETRs were to actual restoration, by region and by circuit."""
+    idx = network_index(s)
+    rows = s.scalars(select(Outage).where(Outage.event_id == event.id, Outage.restored_at.is_not(None), Outage.etr_at.is_not(None))).all()
+    groups: dict[str, dict[str, list[float]]] = {"region": defaultdict(list), "circuit": defaultdict(list)}
+    for o in rows:
+        err = abs((o.restored_at - o.etr_at).total_seconds()) / 3600
+        groups["circuit"][o.feeder_id].append(err)
+        groups["region"][(idx.get(o.feeder_id) or {}).get("region") or "Unassigned"].append(err)
+
+    def summary(key: str, errs: list[float]) -> dict:
+        return {"name": key, "tickets": len(errs), "mae_h": round(sum(errs) / len(errs), 2),
+                "within_2h_pct": round(sum(1 for x in errs if x <= 2) / len(errs) * 100, 1)}
+    circuits = sorted((summary(k, v) | {"zone": (idx.get(k) or {}).get("zone"), "region": (idx.get(k) or {}).get("region")}
+                       for k, v in groups["circuit"].items()), key=lambda r: -r["tickets"])
+    return {"regions": sorted((summary(k, v) for k, v in groups["region"].items()), key=lambda r: r["name"]), "circuits": circuits[:25]}
 
 
 def _round30(d: datetime) -> datetime:

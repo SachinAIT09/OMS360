@@ -54,7 +54,21 @@ class AuthToken(Base):
     user: Mapped[User] = relationship()
 
 
+class RevokedToken(Base):
+    """Signed tokens are stateless; logging out records the token id here until it would have expired."""
+    __tablename__ = "revoked_tokens"
+    jti: Mapped[str] = mapped_column(String(32), primary_key=True)
+    expires_at: Mapped[datetime] = mapped_column(TS)
+
+
 # ------------------------------------------------------------------ network & assets
+# Region → Zone → Substation → Circuit (feeder) → Outage ticket
+class Region(Base):
+    __tablename__ = "regions"
+    id: Mapped[str] = mapped_column(String(20), primary_key=True)
+    name: Mapped[str] = mapped_column(String(60))
+
+
 class Zone(Base):
     __tablename__ = "zones"
     id: Mapped[str] = mapped_column(String(10), primary_key=True)
@@ -69,15 +83,29 @@ class Zone(Base):
     coastal: Mapped[bool] = mapped_column(Boolean, default=False)
     critical: Mapped[bool] = mapped_column(Boolean, default=False)
     medical: Mapped[bool] = mapped_column(Boolean, default=False)
+    region_id: Mapped[str | None] = mapped_column(ForeignKey("regions.id"), nullable=True)
+
+
+class Substation(Base):
+    __tablename__ = "substations"
+    id: Mapped[str] = mapped_column(String(20), primary_key=True)  # SUB-TPA-1
+    name: Mapped[str] = mapped_column(String(80))
+    zone_id: Mapped[str] = mapped_column(ForeignKey("zones.id"))
+    lat: Mapped[float] = mapped_column(Float)
+    lng: Mapped[float] = mapped_column(Float)
 
 
 class Feeder(Base):
+    """A distribution circuit."""
     __tablename__ = "feeders"
     id: Mapped[str] = mapped_column(String(20), primary_key=True)  # FDR-TPA-01
     zone_id: Mapped[str] = mapped_column(ForeignKey("zones.id"))
     customers: Mapped[int] = mapped_column(Integer)
     overhead_pct: Mapped[int] = mapped_column(Integer)
     last_trimmed: Mapped[int] = mapped_column(Integer)  # year of last vegetation cycle
+    substation_id: Mapped[str | None] = mapped_column(ForeignKey("substations.id"), nullable=True)
+    route: Mapped[list | None] = mapped_column(JSON, nullable=True)  # [[[lat, lng], ...], ...] primary conductor path
+    route_source: Mapped[str | None] = mapped_column(String(12), nullable=True)  # synthetic | imported
 
 
 class Facility(Base):
@@ -118,7 +146,12 @@ class StormEvent(Base):
     lat: Mapped[float] = mapped_column(Float, default=25.0)
     lng: Mapped[float] = mapped_column(Float, default=-85.0)
     movement: Mapped[str] = mapped_column(String(40), default="")
-    landfall_at: Mapped[datetime | None] = mapped_column(TS, nullable=True)
+    landfall_at: Mapped[datetime | None] = mapped_column(TS, nullable=True)  # rain events: rain onset
+    # Rain events only (kind == "Rain Event"); hurricane fields above keep neutral defaults.
+    rain_total_in: Mapped[float | None] = mapped_column(Float, nullable=True)
+    rain_rate_in_hr: Mapped[float | None] = mapped_column(Float, nullable=True)
+    duration_h: Mapped[float | None] = mapped_column(Float, nullable=True)
+    soil_saturation: Mapped[float | None] = mapped_column(Float, nullable=True)  # 0 dry – 1 saturated
     track: Mapped[list] = mapped_column(JSON, default=list)  # [{lat,lng,at,observed}]
     notes: Mapped[str] = mapped_column(Text, default="")
     created_by: Mapped[int | None] = mapped_column(ForeignKey("users.id"), nullable=True)
@@ -137,6 +170,32 @@ class PredictionRun(Base):
     result: Mapped[dict] = mapped_column(JSON)
     created_by: Mapped[int | None] = mapped_column(ForeignKey("users.id"), nullable=True)
     created_at: Mapped[datetime] = mapped_column(TS, default=utcnow)
+
+
+class ForecastRun(Base):
+    """A storm forecast imported from an outside model (e.g. the parent company's storm suite), as hazard per zone:
+    [{zone_id, gust_mph, rain_in, surge_ft, arrival_at}]. The prediction downscales it to circuits."""
+    __tablename__ = "forecast_runs"
+    id: Mapped[int] = mapped_column(primary_key=True)
+    event_id: Mapped[int] = mapped_column(ForeignKey("storm_events.id", ondelete="CASCADE"), index=True)
+    source: Mapped[str] = mapped_column(String(80))
+    issued_at: Mapped[datetime] = mapped_column(TS)
+    zones: Mapped[list] = mapped_column(JSON)
+    created_by: Mapped[str] = mapped_column(String(80))
+    created_at: Mapped[datetime] = mapped_column(TS, default=utcnow)
+
+
+class EtrSnapshot(Base):
+    """A circuit ETR as told to customers at a moment (on publish and on every change). Compared with when the circuit
+    was actually restored, these calibrate what a confidence % really means."""
+    __tablename__ = "etr_snapshots"
+    id: Mapped[int] = mapped_column(primary_key=True)
+    event_id: Mapped[int] = mapped_column(ForeignKey("storm_events.id", ondelete="CASCADE"), index=True)
+    feeder_id: Mapped[str] = mapped_column(String(20))
+    at: Mapped[datetime] = mapped_column(TS)
+    etr_at: Mapped[datetime] = mapped_column(TS)
+    confidence: Mapped[int] = mapped_column(Integer)
+    simulated: Mapped[bool] = mapped_column(Boolean, default=False)  # sandbox history, not a real publish
 
 
 # ------------------------------------------------------------------ field operations
@@ -280,6 +339,17 @@ class PublishedEtr(Base):
     __tablename__ = "published_etrs"
     event_id: Mapped[int] = mapped_column(ForeignKey("storm_events.id", ondelete="CASCADE"), primary_key=True)
     zone_id: Mapped[str] = mapped_column(ForeignKey("zones.id"), primary_key=True)
+    published_by: Mapped[str] = mapped_column(String(80))
+    published_at: Mapped[datetime] = mapped_column(TS, default=utcnow)
+
+
+class PublishedCircuitEtr(Base):
+    """A circuit whose ETR customers can see. The live ETR is shown; ETR and confidence at publish time are kept for audit."""
+    __tablename__ = "published_circuit_etrs"
+    event_id: Mapped[int] = mapped_column(ForeignKey("storm_events.id", ondelete="CASCADE"), primary_key=True)
+    feeder_id: Mapped[str] = mapped_column(String(20), primary_key=True)
+    etr_at: Mapped[datetime | None] = mapped_column(TS, nullable=True)
+    confidence: Mapped[int] = mapped_column(Integer)
     published_by: Mapped[str] = mapped_column(String(80))
     published_at: Mapped[datetime] = mapped_column(TS, default=utcnow)
 

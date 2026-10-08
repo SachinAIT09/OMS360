@@ -48,30 +48,52 @@ def _upgrade_chat() -> None:
             c.exec_driver_sql("UPDATE chat_messages SET conversation_id = ? WHERE user_id = ? AND conversation_id IS NULL", (conv, user_id))
 
 
+def _add_columns(table: str, columns: dict[str, str]) -> None:
+    """Databases created before a column existed: add it (create_all only creates missing tables)."""
+    with engine.begin() as c:
+        have = {r[1] for r in c.exec_driver_sql(f"PRAGMA table_info({table})")}
+        for name, ddl in columns.items():
+            if name not in have:
+                c.exec_driver_sql(f"ALTER TABLE {table} ADD COLUMN {name} {ddl}")
+
+
 def init_db() -> None:
-    from .seed import ensure_demo_activity, seed_if_empty
+    from .seed import ensure_demo_activity, ensure_forecast_demo, ensure_network_hierarchy, ensure_rain_demo, seed_if_empty
     Base.metadata.create_all(engine)
     _upgrade_chat()
+    _add_columns("storm_events", {"rain_total_in": "FLOAT", "rain_rate_in_hr": "FLOAT", "duration_h": "FLOAT", "soil_saturation": "FLOAT"})
+    _add_columns("zones", {"region_id": "VARCHAR(20) REFERENCES regions(id)"})
+    _add_columns("feeders", {"substation_id": "VARCHAR(20) REFERENCES substations(id)", "route": "JSON", "route_source": "VARCHAR(12)"})
     with SessionLocal() as s:
         seed_if_empty(s)
+        ensure_network_hierarchy(s)
         ensure_demo_admin(s)
         ensure_demo_activity(s)
+        ensure_rain_demo(s)
+        ensure_forecast_demo(s)
 
 
 DEMO_ADMINS = [
     ("steve@powerconnect.ai", "admin", "Steve Dawson", "PowerConnect.AI"),
     ("admin@gmail.com", "admin@123", "Admin", "Administrator"),
 ]
+DEMO_ADMIN_EMAILS = {email for email, *_ in DEMO_ADMINS}
 
 
 def ensure_demo_admin(s: Session) -> None:
-    """Demo admin logins (DEMO_ADMINS) — added to new and existing databases."""
+    """Demo admin logins (DEMO_ADMINS) — added to new and existing databases, and healed if someone
+    deactivated, demoted or re-passworded them, so the shared demo logins always work."""
     from sqlalchemy import select
-    from .auth import hash_password
+    from .auth import hash_password, verify_password
     from .models import User
     for email, password, name, title in DEMO_ADMINS:
-        if not s.scalars(select(User).where(User.email == email)).first():
+        u = s.scalars(select(User).where(User.email == email)).first()
+        if not u:
             s.add(User(email=email, name=name, title=title, role="admin", password_hash=hash_password(password)))
+            continue
+        u.active, u.role = True, "admin"
+        if not verify_password(password, u.password_hash):
+            u.password_hash = hash_password(password)
     s.commit()
 
 

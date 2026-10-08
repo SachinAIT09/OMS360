@@ -24,6 +24,7 @@ from ..db import SessionLocal, get_setting
 from ..models import (Crew, Facility, Feeder, Message, MutualAidRequest, NotificationRule, Outage, StagingYard, StormEvent, Zone,
                       utcnow)
 from . import ops
+from .events import is_rain
 from .recommendations import latest_prediction
 
 log = logging.getLogger("oms360.connector")
@@ -48,8 +49,11 @@ def new_ticket(s: Session, e: StormEvent, zone: Zone, feeders: list[Feeder], mea
                facilities: dict[str, Facility], rng: random.Random = _rng, at=None) -> Outage:
     f = rng.choice(feeders)
     fac = facilities.get(f.id)
-    surge = zone.coastal and rng.random() < 0.4
-    cause = "surge" if surge else rng.choices(["wind", "tree", "equipment", "flooding"], [45, 40, 10, 5])[0]
+    if is_rain(e):
+        cause = rng.choices(["flooding", "tree", "equipment", "wind"], [45 if zone.coastal else 25, 45, 20, 5])[0]
+    else:
+        surge = zone.coastal and rng.random() < 0.4
+        cause = "surge" if surge else rng.choices(["wind", "tree", "equipment", "flooding"], [45, 40, 10, 5])[0]
     damage = rng.choices(["service", "conductor", "transformer", "pole"], [25, 35, 25, 15])[0]
     customers = max(1, int(mean_customers * rng.choice([0.05, 0.2, 0.5, 0.8, 1.2, 1.8, 3.0])))
     if damage == "service":
@@ -173,6 +177,11 @@ def _send_scheduled(s: Session) -> int:
 def tick() -> None:
     with SessionLocal() as s:
         if _send_scheduled(s):
+            s.commit()
+            bus.publish("messages")
+        from . import notify
+        etr_updates = sum(notify.watch(s, e) for e in s.scalars(select(StormEvent).where(StormEvent.status.in_(["active", "restoring"]))).all())
+        if etr_updates:
             s.commit()
             bus.publish("messages")
         if get_setting(s, "connector_mode", "sandbox") != "sandbox":

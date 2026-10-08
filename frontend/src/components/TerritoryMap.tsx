@@ -8,6 +8,8 @@ import { dt, FAC_COLOR, fmt, pct, sevColor } from "../lib/format";
 
 export interface MapZone { id: string; short: string; lat: number; lng: number; customers: number; value: number; popup?: ReactNode; restored?: boolean }
 export interface MapPin { id: number | string; lat: number; lng: number; color: string; popup?: ReactNode; onClick?: () => void }
+/** A circuit route: one or more polylines of [lat, lng]. */
+export interface MapLine { id: string; lines: [number, number][][]; color: string; weight?: number; opacity?: number; popup?: ReactNode }
 
 const facIcon = (k: string) => L.divIcon({ className: "", html: `<div class="mk" style="background:${FAC_COLOR[k]}">${k}</div>`, iconSize: [18, 18], iconAnchor: [9, 9] });
 const yardIcon = L.divIcon({ className: "", html: `<div class="mk round" style="background:#2b6bff">Y</div>`, iconSize: [18, 18], iconAnchor: [9, 9] });
@@ -26,8 +28,8 @@ function Basemap({ light }: { light: boolean }) {
   </>;
 }
 
-export function TerritoryMap({ zones = [], pins = [], facilities, yards, track, center = [27.93, -82.4], zoom = 10, height = 420, labels = true, light, radarLayer }: {
-  zones?: MapZone[]; pins?: MapPin[]; facilities?: Facility[]; yards?: Yard[]; track?: TrackPoint[] | null; center?: [number, number]; zoom?: number;
+export function TerritoryMap({ zones = [], pins = [], lines = [], facilities, yards, track, center = [27.93, -82.4], zoom = 10, height = 420, labels = true, light, radarLayer }: {
+  zones?: MapZone[]; pins?: MapPin[]; lines?: MapLine[]; facilities?: Facility[]; yards?: Yard[]; track?: TrackPoint[] | null; center?: [number, number]; zoom?: number;
   height?: number | string; labels?: boolean; light?: boolean; radarLayer?: string | null;
 }) {
   const scheme = useComputedColorScheme("dark");
@@ -45,6 +47,10 @@ export function TerritoryMap({ zones = [], pins = [], facilities, yards, track, 
           </Circle>
         );
       })}
+      {lines.map(l => (
+        <Polyline key={l.id} positions={l.lines} pathOptions={{ color: l.color, weight: l.weight ?? 3, opacity: l.opacity ?? 0.9 }}>
+          {l.popup && <Popup>{l.popup}</Popup>}
+        </Polyline>))}
       {track && track.length > 1 && <StormTrack track={track} />}
       {facilities?.map(f => (
         <Marker key={f.id} position={[f.lat, f.lng]} icon={facIcon(f.kind)}>

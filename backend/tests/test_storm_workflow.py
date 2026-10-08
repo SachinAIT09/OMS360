@@ -1,8 +1,8 @@
-from datetime import datetime
+from datetime import datetime, timedelta
 
 from app.db import SessionLocal
-from app.models import Crew
-from app.services import connector
+from app.models import Crew, Outage, StormEvent, utcnow
+from app.services import connector, ops
 
 from .conftest import login
 
@@ -69,16 +69,27 @@ def test_more_crews_bring_etr_forward(client, ops_h, kyle):
             c.status = "off_shift"
         s.commit()
     activate(client, ops_h, kyle["id"], 10)
+    now = utcnow()  # one fixed clock, so half-hour rounding and the passing seconds can't decide the result
+
+    def queue_hours():
+        """Hours until each unassigned ticket is expected back: the part of the ETR that crew numbers drive."""
+        with SessionLocal() as s:
+            e = s.get(StormEvent, kyle["id"])
+            waiting = {o.id for o in s.query(Outage).filter(Outage.event_id == e.id, Outage.status.in_(["reported", "assessed"]))}
+            etrs = {tid: etr for z in ops.zone_etrs(s, e, now).values() for tid, etr in z["tickets"].items() if tid in waiting}
+        assert etrs, "the sandbox should have opened unassigned tickets"
+        return sum((etr - now).total_seconds() for etr in etrs.values()) / 3600
 
     def last_etr():
         return datetime.fromisoformat(client.get(f"/api/events/{kyle['id']}/restoration", headers=ops_h).json()["stats"]["last_etr_at"])
 
-    before = last_etr()
+    before, before_last = queue_hours(), last_etr()
     with SessionLocal() as s:
         for c in s.query(Crew).filter(Crew.kind == "line").all():
             c.status = "available"
         s.commit()
-    assert last_etr() < before
+    assert queue_hours() < before
+    assert last_etr() <= before_last + timedelta(minutes=30)  # never later than one rounding step
 
 
 def test_publish_gate_and_public_lookup(client, ops_h, kyle):
@@ -107,3 +118,31 @@ def test_preparing_storm_keeps_a_live_trickle_of_work(client, ops_h, monkeypatch
     assert 0 < len(open_) <= connector.BAND_OPEN_TARGET
     assert any(o["status"] in ("assigned", "in_progress") for o in items)  # routine dispatch put crews on it
     assert all(o["customers"] <= 900 for o in items)  # scattered band outages, not the main storm
+
+
+def test_rain_event_is_modelled_on_rainfall(client, ops_h):
+    assert client.post("/api/events", headers=ops_h, json={"name": "Bad type", "kind": "Meteor"}).status_code == 422
+    e = client.post("/api/events", headers=ops_h, json={"name": "October Rain Event", "kind": "Rain Event", "rain_total_in": 6,
+                                                         "rain_rate_in_hr": 1.5, "duration_h": 14, "soil_saturation": 0.7}).json()
+    assert e["kind"] == "Rain Event" and e["rain_total_in"] == 6 and e["track"] == []
+    run = client.post(f"/api/events/{e['id']}/predictions", headers=ops_h, json={}).json()
+    res = run["result"]
+    assert res["kind"] == "rain" and res["scenario"] == "6 in rain" and res["surge"] is None
+    assert all("Flood" in z["driver"] or "soil" in z["driver"] or "Tree" in z["driver"] for z in res["zones"])
+    heavier = client.post(f"/api/events/{e['id']}/predictions", headers=ops_h, json={"rain_in": 12, "save": False}).json()
+    assert heavier["result"]["pred_total"] > res["pred_total"]
+
+    client.post(f"/api/events/{e['id']}/status", headers=ops_h, json={"status": "preparing"})
+    keys = {r["key"] for r in client.get(f"/api/events/{e['id']}/recommendations", headers=ops_h).json()}
+    assert "flood_assets" in keys and "eoc" not in keys
+
+    comms = login(client, "priya.nair")
+    for purpose in ("prepare", "warning"):
+        for ch in ("x", "sms", "email"):
+            body = client.post("/api/messages/ai-draft", headers=comms, json={"event_id": e["id"], "channel": ch, "purpose": purpose}).json()["body"]
+            assert "Cat " not in body and "Hurricane" not in body and "39 mph" not in body, body
+
+    r = client.post("/api/jarvis/ask", headers=ops_h, json={"question": "What if it brings 10 inches instead?", "event_id": e["id"]}).json()
+    assert "10 inches of rain" in r["text"]
+    r = client.post("/api/jarvis/ask", headers=ops_h, json={"question": "Where is the storm, how much rain?", "event_id": e["id"]}).json()
+    assert "Rain Event" in r["text"] and "Cat" not in r["text"]

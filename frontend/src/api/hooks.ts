@@ -1,7 +1,7 @@
 import { useMutation, useQuery, useQueryClient, type QueryKey } from "@tanstack/react-query";
 import { notifications } from "@mantine/notifications";
 import { api } from "./client";
-import type { Reference, StormEvent } from "./types";
+import type { Reference, RoutesInfo, StormEvent } from "./types";
 
 /** GET helper — the query key is the path so live updates can invalidate by prefix. */
 export function useGet<T>(path: string | null, opts: { refetchInterval?: number; enabled?: boolean } = {}) {
@@ -38,3 +38,5 @@ export function invalidate(qc: ReturnType<typeof useQueryClient>, prefixes: stri
 
 export const useReference = () => useQuery<Reference>({ queryKey: ["/reference"], queryFn: () => api.get("/reference"), staleTime: Infinity });
 export const useEvents = () => useGet<StormEvent[]>("/events");
+/** Circuit routes for maps (sandbox-drawn until the utility's GIS export is imported). */
+export const useRoutes = () => useQuery<RoutesInfo>({ queryKey: ["/network/routes"], queryFn: () => api.get("/network/routes"), staleTime: 10 * 60_000 });

@@ -5,12 +5,13 @@ import {
 } from "@mantine/core";
 import { useForm } from "@mantine/form";
 import { useDebouncedValue, useDisclosure } from "@mantine/hooks";
-import { IconCloud, IconHistory, IconMapPin, IconPlugConnected, IconSearch, IconUserPlus, IconUsers } from "@tabler/icons-react";
+import { IconCloud, IconHistory, IconMapPin, IconPlugConnected, IconRoute, IconSearch, IconUserPlus, IconUsers } from "@tabler/icons-react";
 import { api, qs } from "../api/client";
 import { useAction, useGet, useReference } from "../api/hooks";
 import type { Audit, User, Weather } from "../api/types";
 import { useAuth } from "../auth/AuthContext";
 import { Loading, PageHeader } from "../components/common";
+import { NetworkAdmin } from "../components/NetworkAdmin";
 import { ago, dt, fmt } from "../lib/format";
 
 const ROLES = [{ value: "executive", label: "Executive" }, { value: "ops_manager", label: "Operations Manager" }, { value: "dispatcher", label: "Dispatcher" },
@@ -26,11 +27,13 @@ export default function AdminPage() {
         <Tabs.List mb="lg">
           <Tabs.Tab value="users" leftSection={<IconUsers size={16} />}>Users</Tabs.Tab>
           <Tabs.Tab value="zones" leftSection={<IconMapPin size={16} />}>Zones</Tabs.Tab>
+          <Tabs.Tab value="network" leftSection={<IconRoute size={16} />}>Network</Tabs.Tab>
           <Tabs.Tab value="integrations" leftSection={<IconPlugConnected size={16} />}>Integrations</Tabs.Tab>
           <Tabs.Tab value="audit" leftSection={<IconHistory size={16} />}>Audit log</Tabs.Tab>
         </Tabs.List>
         <Tabs.Panel value="users"><Users /></Tabs.Panel>
         <Tabs.Panel value="zones"><Zones /></Tabs.Panel>
+        <Tabs.Panel value="network"><NetworkAdmin /></Tabs.Panel>
         <Tabs.Panel value="integrations"><Integrations /></Tabs.Panel>
         <Tabs.Panel value="audit"><AuditLog /></Tabs.Panel>
       </Tabs>

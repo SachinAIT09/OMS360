@@ -12,7 +12,8 @@ from sqlalchemy.orm import Session
 from .. import bus, serial
 from ..auth import current_user, require
 from ..db import get_session
-from ..models import (Crew, Facility, MutualAidRequest, Outage, PublishedEtr, StagingYard, StormEvent, User, Zone, utcnow)
+from ..models import (Crew, Facility, MutualAidRequest, Outage, PublishedCircuitEtr, PublishedEtr, StagingYard, StormEvent, User, Zone,
+                      utcnow)
 from ..services import ops
 from ..services.connector import next_number
 from .events import get_event
@@ -362,6 +363,58 @@ def publish(event_id: int, body: PublishIn, s: Session = Depends(get_session), u
     s.commit()
     bus.publish("restoration")
     return {"published": len(added)}
+
+
+@router.get("/events/{event_id}/etrs")
+def network_etrs(event_id: int, region: str | None = None, zone: str | None = None, s: Session = Depends(get_session),
+                 _: User = Depends(current_user)):
+    """ETRs by region and circuit (feeder), with confidence. `region` / `zone` filter the circuits."""
+    e = get_event(s, event_id)
+    net = ops.network_etrs(s, e)
+    circuits = [c for c in net["circuits"] if (not region or c["region_id"] == region) and (not zone or c["zone_id"] == zone)]
+    return {"regions": net["regions"], "circuits": circuits, "publish_confidence": ops.PUBLISH_CONFIDENCE,
+            "can_publish": e.status in ("active", "restoring")}
+
+
+class CircuitPublishIn(BaseModel):
+    feeder_ids: list[str] | None = None  # None = every circuit at or above min_confidence
+    min_confidence: int = Field(ops.PUBLISH_CONFIDENCE, ge=0, le=100)
+
+
+def publish_circuits(s: Session, e: StormEvent, user: str, feeder_ids: list[str] | None = None, min_confidence: int = ops.PUBLISH_CONFIDENCE) -> int:
+    net = {c["id"]: c for c in ops.network_etrs(s, e)["circuits"]}
+    targets = feeder_ids if feeder_ids is not None else [fid for fid, c in net.items() if c["confidence"] >= min_confidence]
+    existing = {p.feeder_id for p in s.scalars(select(PublishedCircuitEtr).where(PublishedCircuitEtr.event_id == e.id)).all()}
+    added = [fid for fid in targets if fid in net and fid not in existing]
+    for fid in added:
+        s.add(PublishedCircuitEtr(event_id=e.id, feeder_id=fid, etr_at=net[fid]["etr_at"], confidence=net[fid]["confidence"], published_by=user))
+    from ..services import notify
+    notify.circuits_published(s, e, [net[fid] for fid in added])
+    bus.audit(s, user, "etr.published", "storm_event", e.id, f"Circuit ETRs published for {len(added)} circuits"
+              + ("" if feeder_ids is not None else f" (confidence ≥ {min_confidence}%)"), e.id)
+    return len(added)
+
+
+@router.post("/events/{event_id}/publish/circuits")
+def publish_circuit_etrs(event_id: int, body: CircuitPublishIn, s: Session = Depends(get_session), user: User = Depends(require("etr.publish"))):
+    e = get_event(s, event_id)
+    if e.status not in ("active", "restoring"):
+        raise HTTPException(409, "ETRs can be published while an event is Active or Restoring.")
+    n = publish_circuits(s, e, user.name, body.feeder_ids, body.min_confidence)
+    s.commit()
+    bus.publish("restoration")
+    return {"published": n}
+
+
+@router.delete("/events/{event_id}/publish/circuits/{feeder_id}")
+def unpublish_circuit(event_id: int, feeder_id: str, s: Session = Depends(get_session), user: User = Depends(require("etr.publish"))):
+    row = s.get(PublishedCircuitEtr, (event_id, feeder_id))
+    if row:
+        s.delete(row)
+        bus.audit(s, user.name, "etr.unpublished", "storm_event", event_id, f"Circuit ETR unpublished for {feeder_id}", event_id)
+        s.commit()
+        bus.publish("restoration")
+    return {"ok": True}
 
 
 @router.delete("/events/{event_id}/publish/{zone_id}")

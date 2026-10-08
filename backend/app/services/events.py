@@ -14,6 +14,14 @@ ALLOWED = {
 }
 LABELS = {"monitoring": "Monitoring", "preparing": "Preparing", "active": "Active", "restoring": "Restoring", "closed": "Closed"}
 
+RAIN = "Rain Event"
+EVENT_KINDS = ["Hurricane", "Tropical Storm", "Tropical Depression", "Severe Thunderstorm", "Winter Storm", RAIN]
+
+
+def is_rain(e: StormEvent) -> bool:
+    """Rain events are modelled on rainfall and flooding instead of category, wind and landfall."""
+    return e.kind == RAIN
+
 
 class LifecycleError(Exception):
     pass

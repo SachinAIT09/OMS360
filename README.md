@@ -36,7 +36,8 @@ npm test         # backend tests + TypeScript check
 API documentation: http://127.0.0.1:8000/docs
 
 ### Sign in
-Demo login (shown on the sign-in page): **steve@powerconnect.ai / admin** (Administrator, full access).
+Demo logins (shown on the sign-in page): **steve@powerconnect.ai / admin** and **admin@gmail.com / admin@123** (Administrator, full access).
+These two accounts are protected: they can't be deactivated, demoted or re-passworded from Administration → Users, and every server start restores them.
 
 The Bayview role accounts below are under *Other demo roles* on the sign-in page; their password is `oms360`.
 
@@ -49,6 +50,12 @@ The Bayview role accounts below are under *Other demo roles* on the sign-in page
 | Sam Patel | Administrator | Everything, plus users, zones, integrations and the audit log |
 
 To start over with fresh data, stop the server and delete `backend/data/oms360.sqlite`.
+
+### Hosting on Render's free plan
+- **No persistent disk.** The database is rebuilt from seed data every time the service restarts or wakes up, so changes made in the app (users, zones, events) don't last.
+- **Sign-ins survive restarts.** Login tokens are signed with `OMS360_SECRET`; `render.yaml` generates it once.
+- **Sleeps after ~15 min idle.** The first request then takes up to a minute. The sign-in page shows a "waking up" note and keeps retrying.
+- **Keeping it awake.** Point a free uptime monitor (UptimeRobot, cron-job.org) at `https://<your-app>.onrender.com/api/health` every 10 minutes. One always-on service fits within the 750 free instance-hours a month.
 
 ## Integrations
 - **NHC**: Storm Events → *Import from NHC* lists the active storms from `nhc.noaa.gov/CurrentStorms.json`.

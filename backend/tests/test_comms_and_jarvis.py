@@ -58,7 +58,7 @@ def test_assistant_conversations_and_saved_answers(client, kyle):
 def test_reports_have_history(client, ops_h):
     rows = client.get("/api/reports/events", headers=ops_h).json()
     closed = [r for r in rows if r["event"]["status"] == "closed"]
-    assert len(closed) == 2 and all(r["etr_mae_h"] is not None and r["tickets"] > 50 for r in closed)
+    assert len(closed) == 3 and any(r["event"]["kind"] == "Rain Event" for r in closed) and all(r["etr_mae_h"] is not None and r["tickets"] > 50 for r in closed)
     detail = client.get(f"/api/reports/events/{closed[0]['event']['id']}", headers=ops_h).json()
     assert detail["zones"] and detail["channels"]
 

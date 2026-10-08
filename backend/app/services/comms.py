@@ -4,13 +4,14 @@ from sqlalchemy.orm import Session
 
 from ..data import MEDICAL_NEEDS
 from ..fmt import fmt, fmt_dt, fmt_t, pct
-from ..models import StormEvent, Zone
+from ..models import Region, StormEvent, Zone
+from .events import is_rain
 
 SITE = "bayviewpw.example/outages"
 CHANNELS = {"x": "X / Twitter", "facebook": "Facebook", "sms": "SMS", "email": "Email", "ivr": "IVR / phone", "website": "Website banner"}
 PURPOSES = {
     "prepare": "Prepare — storm approaching",
-    "warning": "Warning — landfall within 24 h",
+    "warning": "Warning — impact within 24 h",
     "outage": "Outage confirmed — crews mobilising",
     "etr": "Restoration times available",
     "restored": "Power restored — verify",
@@ -20,7 +21,7 @@ PURPOSES = {
 SOCIAL_FOLLOWERS = {"x": 48200, "facebook": 61500}
 
 
-def audiences(s: Session, customers_out: int = 0) -> list[dict]:
+def audiences(s: Session, customers_out: int = 0, event: StormEvent | None = None) -> list[dict]:
     zones = s.scalars(select(Zone)).all()
     total = sum(z.customers for z in zones)
     rows = [
@@ -28,9 +29,20 @@ def audiences(s: Session, customers_out: int = 0) -> list[dict]:
         {"id": "water", "name": "Water customers", "count": sum(z.water_customers for z in zones)},
         {"id": "medical", "name": "Medical-needs / life-support", "count": MEDICAL_NEEDS},
         {"id": "coastal", "name": "Coastal surge zones", "count": sum(z.customers for z in zones if z.coastal)},
+        {"id": "flood", "name": "Flood-prone zones", "count": sum(z.customers for z in zones if z.coastal or z.vulnerability >= 0.85)},
         {"id": "out", "name": "Customers currently out", "count": customers_out},
     ]
     rows += [{"id": f"zone:{z.id}", "name": f"Zone — {z.short}", "count": z.customers} for z in zones]
+    regions = {r.id: r.name for r in s.scalars(select(Region)).all()}
+    rows += [{"id": f"region:{rid}", "name": f"Region — {name}", "count": sum(z.customers for z in zones if z.region_id == rid)}
+             for rid, name in regions.items()]
+    if event is not None and event.status in ("active", "restoring"):
+        from .ops import network_etrs
+        circuits = network_etrs(s, event)["circuits"]
+        rows.append({"id": "circuits_published", "name": "Customers out on circuits with a published ETR",
+                     "count": sum(c["customers_out"] for c in circuits if c["published"])})
+        rows += [{"id": f"circuit:{c['id']}", "name": f"Circuit {c['id']} — {c['zone']} ({c['substation'] or 'n/a'})", "count": c["customers_out"]}
+                 for c in sorted(circuits, key=lambda c: c["id"])]
     return rows
 
 
@@ -43,6 +55,33 @@ def recipients(channel: str, audience_count: int) -> int:
 
 def default_purpose(event: StormEvent) -> str:
     return {"monitoring": "prepare", "preparing": "warning", "active": "outage", "restoring": "etr", "closed": "restored"}[event.status]
+
+
+def _rain_templates(event: StormEvent, ctx: dict, lf: str, lf_t: str, worst: str, tag: str) -> dict:
+    """Rain events: rainfall and flooding wording instead of category, wind and landfall."""
+    name, out = event.name, ctx.get("customers_out", 0)
+    when = f"from ~{lf_t}" if event.landfall_at else "soon"  # rain onset, when known
+    rain = f"{event.rain_total_in:g} inches of rain" if event.rain_total_in else "heavy rain"
+    return {
+        "prepare": {
+            "subject": f"Heavy rain ahead: prepare for {name}",
+            "short": f"🌧️ {name} could bring {rain} to Tampa Bay {when}. Saturated ground means falling trees and flooding. Our crews are preparing now. Sign up for outage texts → {SITE} {tag}",
+            "long": f"{name} is forecast to bring {rain} to Tampa Bay starting {lf}. Flooding and trees falling in saturated soil can cause outages, especially in {worst}.\n\nWhat we're doing: staging crews on high ground, pre-positioning pumps at low-lying substations and protecting water lift stations.\n\nWhat you can do: charge devices, never drive through flooded roads, and text REG to 72990 for outage alerts.",
+            "sms": f"Bayview: {name} may bring {rain} and outages {when}. Prepare now. Use medical equipment? Reply MED. Report outages: text OUT. STOP to opt out.",
+        },
+        "warning": {
+            "subject": f"Flood Watch: {name} rain starts within 24 hours",
+            "short": f"⚠️ Flood Watch: {name} rain expected {when}. {fmt(ctx.get('line_workers', 0))} line workers are staged on high ground. Stay away from downed lines and flood water. {tag}",
+            "long": f"Heavy rain from {name} starts in less than 24 hours.\n\nOur crews are staged on high ground and will restore power as soon as flooded areas are safe to enter.\n\nIf you lose power you don't need to call: smart meters tell us automatically and we'll text your estimated restoration time. Never touch electrical equipment standing in water.",
+            "sms": f"Bayview: {name} rain expected {when}. Crews are staged. Smart meters report outages automatically — we'll text your restoration time. Avoid flood water near power lines.",
+        },
+        "outage": {
+            "subject": "We know your power is out",
+            "short": f"{name} has caused outages for ~{fmt(out)} customers. Crews are working wherever roads are passable. You don't need to report your outage — our smart meters tell us. {tag}",
+            "long": f"Approximately {fmt(out)} customers are without power after {name}. Crews are working wherever flood water allows safe access, starting with hospitals, water plants and medical-needs customers.\n\nWe will publish estimated restoration times by address at {SITE} once damage is assessed.",
+            "sms": "Bayview: We know your power is out. Crews work as soon as flooded areas are safe to enter. We'll text your estimated restoration time. Downed line or water near equipment? Call 911.",
+        },
+    }
 
 
 def draft(event: StormEvent, channel: str, purpose: str, ctx: dict) -> dict:
@@ -97,7 +136,10 @@ def draft(event: StormEvent, channel: str, purpose: str, ctx: dict) -> dict:
             "long": f"As a precaution after {name}, customers in {worst} should boil tap water for one minute before drinking or cooking until the notice is lifted.",
             "sms": f"Bayview Water: Precautionary boil-water notice for {worst}. Boil water 1 min before use until further notice.",
         },
-    }[purpose]
+    }
+    if is_rain(event):
+        T.update(_rain_templates(event, ctx, lf, lf_t, worst, tag))
+    T = T[purpose]
     if channel == "x":
         body = T["short"][:280]
     elif channel == "sms":

@@ -74,6 +74,9 @@ def seed_if_empty(s: Session) -> None:
     # ---- history
     _historical(s, rng, "Hurricane Delphine", 2, now - timedelta(days=390), 0.93)
     _historical(s, rng, "Hurricane Barrett", 1, now - timedelta(days=118), 1.08)
+    # own generator, so adding it leaves the rest of the seeded demo unchanged
+    _historical(s, random.Random(7), "June Rain Event", 1, now - timedelta(days=60), 1.04,
+                rain={"rain_total_in": 7.5, "rain_rate_in_hr": 1.8, "duration_h": 18, "soil_saturation": 0.8})
 
     # ---- current planning event: Hurricane Kyle, landfall ~72 h out
     landfall = (now + timedelta(hours=72)).replace(minute=0, second=0, microsecond=0)
@@ -125,9 +128,10 @@ TOPUP_STATUS = [("in_progress", 4), ("assigned", 4), ("assessed", 3), ("reported
 
 def refresh_demo(s: Session) -> dict:
     """Top the demo storm back up to its floor without undoing anything the user did: fill only what's missing."""
+    rain_outages = _refresh_rain_demo(s)
     e = _demo_storm(s)
     if not e:
-        return {"outages": 0, "messages": 0}
+        return {"outages": rain_outages, "messages": 0}
     now = utcnow()
     open_n = s.scalar(select(func.count(Outage.id)).where(Outage.event_id == e.id,
                                                          Outage.status.in_(["reported", "assessed", "assigned", "in_progress"]))) or 0
@@ -148,7 +152,91 @@ def refresh_demo(s: Session) -> dict:
             _add_message(s, e, aud, (*t[:6], rng.uniform(0.1, 1.2), t[7]), now)
             messages += 1
     s.flush()
-    return {"outages": outages, "messages": messages}
+    return {"outages": outages + rain_outages, "messages": messages}
+
+
+# ---------------------------------------------------------------- demo: Rain Event in restoration (circuit / region ETRs)
+RAIN_DEMO = "Tampa Bay Rain Event"
+RAIN_DEMO_STATUS = [("restored", 55), ("in_progress", 16), ("assigned", 18), ("assessed", 24), ("reported", 20)]
+RAIN_OPEN_FLOOR = 25
+
+
+def _rain_demo(s: Session) -> StormEvent | None:
+    return s.scalars(select(StormEvent).where(StormEvent.name == RAIN_DEMO, StormEvent.status.in_(["active", "restoring"]))).first()
+
+
+def ensure_rain_demo(s: Session) -> None:
+    """A rain event already in restoration, so region and circuit ETRs have live data to show: tickets across every
+    circuit state, a few manual ETRs, the most certain circuits published, Flood Watch messages sent.
+    Added once to new and existing databases; created before the demo hurricane so that stays the current event."""
+    from .services import comms
+    from .services.events import RAIN
+    from .services.prediction import predict
+    if s.scalars(select(StormEvent.id).where(StormEvent.name == RAIN_DEMO)).first():
+        return
+    from .services import notify
+    notify.ensure_rule(s)  # publishing below texts the customers on each circuit
+    rng = random.Random(4242)
+    now = utcnow()
+    onset = (now - timedelta(hours=16)).replace(minute=0, second=0, microsecond=0)
+    dana = s.scalars(select(User).where(User.role == "ops_manager")).first()
+    e = StormEvent(name=RAIN_DEMO, kind=RAIN, source="manual", status="restoring", category=1, max_wind_mph=35, pressure_mb=1006,
+                   lat=27.95, lng=-82.46, movement="", landfall_at=onset, track=[], rain_total_in=6.5, rain_rate_in_hr=1.8,
+                   duration_h=14, soil_saturation=0.75, created_by=dana.id if dana else None,
+                   notes="Stalled frontal boundary over Tampa Bay. 5–8 in observed, locally 10 in along the South Shore; streets flooded in Ruskin and Apollo Beach.",
+                   created_at=onset - timedelta(days=2), activated_at=onset - timedelta(hours=1), restoring_at=onset + timedelta(hours=12))
+    s.add(e)
+    s.flush()
+    res = predict(s, e)
+    s.add(PredictionRun(event_id=e.id, category=1, result=res, created_by=dana.id if dana else None, created_at=onset - timedelta(hours=20)))
+    _early_bands(s, rng, e, now, RAIN_DEMO_STATUS)
+    # a dispatcher pinned some ETRs by hand after talking to the crews
+    for o in s.scalars(select(Outage).where(Outage.event_id == e.id, Outage.status == "assessed").limit(5)).all():
+        o.etr_override, o.etr_at = True, now + timedelta(hours=rng.uniform(2, 7))
+        _ev(s, o, "etr", "ETR set manually after crew assessment", "Luis Ortega", now - timedelta(minutes=rng.uniform(5, 50)))
+    s.flush()
+    zones = {o.zone_id for o in s.scalars(select(Outage).where(Outage.event_id == e.id, Outage.status.in_(ops.OPEN))).all()}
+    for z in sorted(zones)[:4]:
+        s.add(PublishedEtr(event_id=e.id, zone_id=z, published_by="Dana Whitaker", published_at=now - timedelta(hours=3)))
+    from .routers.field import publish_circuits
+    publish_circuits(s, e, "Dana Whitaker")  # circuits at ≥80% confidence
+    aud = {a["id"]: a["count"] for a in comms.audiences(s)}
+    for ch, audience, purpose, hours in (("sms", "flood", "warning", 26), ("x", "all", "prepare", 30), ("sms", "out", "outage", 10),
+                                         ("x", "all", "etr", 2)):
+        d = comms.draft(e, ch, purpose, {"customers_out": 9000, "restored_pct": 0.55, "line_workers": 640, "worst": ["Ruskin", "Apollo Beach"]})
+        _add_message(s, e, aud, (ch, audience, d["subject"], d["body"], "sent", True, hours, {}), now)
+    for at, action, detail in ((e.created_at, "event.created", f"{RAIN_DEMO} created (Monitoring)"),
+                               (e.activated_at, "event.status", f"{RAIN_DEMO}: Preparing → Active"),
+                               (e.restoring_at, "event.status", f"{RAIN_DEMO}: Active → Restoring")):
+        s.add(AuditLog(at=at, user_name="Dana Whitaker", action=action, entity="storm_event", entity_id=str(e.id), detail=detail, event_id=e.id))
+    s.commit()
+
+
+def ensure_forecast_demo(s: Session) -> None:
+    """The parent company's forecast for each open demo event (mock feed) with a prediction run on it, the circuit-ETR
+    text rule, and simulated publishing history so confidence calibration has something to show."""
+    from .services import calibration, forecast, notify
+    from .services.prediction import predict
+    notify.ensure_rule(s)
+    for e in (_demo_storm(s), _rain_demo(s)):
+        if e and not forecast.latest_forecast(s, e.id):
+            fc = forecast.save(s, e, forecast.mock_parent_forecast(s, e), forecast.PARENT_SOURCE, "Parent-company feed",
+                               issued_at=utcnow() - timedelta(hours=1))
+            res = predict(s, e)
+            s.add(PredictionRun(event_id=e.id, category=res["category"], result=res, created_at=fc.issued_at + timedelta(minutes=5)))
+            s.add(AuditLog(at=fc.issued_at, user_name="Parent-company feed", action="forecast.imported", entity="storm_event",
+                           entity_id=str(e.id), detail=f"{fc.source} forecast imported; prediction re-run: {res['pred_total']:,} customers", event_id=e.id))
+    calibration.ensure_history(s)
+    s.commit()
+
+
+def _refresh_rain_demo(s: Session) -> int:
+    """Field crews in the sandbox finish work in minutes; keep the rain demo's circuits stocked with open work."""
+    e = _rain_demo(s)
+    if not e:
+        return 0
+    open_n = s.scalar(select(func.count(Outage.id)).where(Outage.event_id == e.id, Outage.status.in_(ops.OPEN))) or 0
+    return _early_bands(s, random.Random(), e, utcnow(), TOPUP_STATUS, recent=True) if open_n < RAIN_OPEN_FLOOR else 0
 
 
 def _comms_templates(e: StormEvent, now) -> list[tuple]:
@@ -259,7 +347,8 @@ def _early_bands(s: Session, rng: random.Random, e: StormEvent, now, mix=EARLY_S
         z = rng.choices(zones, weights)[0]
         reported = now - timedelta(minutes=rng.uniform(20, 90) if recent else rng.uniform(20, 9 * 60))
         o = new_ticket(s, e, z, feeders[z.id], 70, facilities, rng, at=reported)
-        o.cause = rng.choices(["wind", "tree", "equipment"], [45, 45, 10])[0]
+        if e.kind != "Rain Event":
+            o.cause = rng.choices(["wind", "tree", "equipment"], [45, 45, 10])[0]
         o.customers = min(o.customers, rng.randint(8, 900))
         s.execute(update(OutageEvent).where(OutageEvent.outage_id == o.id).values(at=reported))
         if status == "reported":
@@ -289,17 +378,54 @@ def _early_bands(s: Session, rng: random.Random, e: StormEvent, now, mix=EARLY_S
     return len(statuses)
 
 
+def ensure_network_hierarchy(s: Session) -> None:
+    """Regions and substations above the feeders (circuits) — added to new and existing databases."""
+    from .data import REGIONS, SUBSTATION_SIDES
+    from .models import Region, Substation
+    zones = {z.id: z for z in s.scalars(select(Zone)).all()}
+    for r in REGIONS:
+        if not s.get(Region, r["id"]):
+            s.add(Region(id=r["id"], name=r["name"]))
+        s.flush()
+        for zid in r["zones"]:
+            if zid in zones and not zones[zid].region_id:
+                zones[zid].region_id = r["id"]
+    feeders: dict[str, list[Feeder]] = {}
+    for f in s.scalars(select(Feeder).order_by(Feeder.id)).all():
+        feeders.setdefault(f.zone_id, []).append(f)
+    have = {sub.zone_id for sub in s.scalars(select(Substation)).all()}
+    for zid, fs in feeders.items():
+        if zid in have:
+            continue
+        z = zones[zid]
+        n = min(4, max(2, -(-len(fs) // 8)))
+        subs = []
+        for i, (side, dlat, dlng) in enumerate(SUBSTATION_SIDES[:n]):
+            subs.append(Substation(id=f"SUB-{z.code}-{i + 1}", name=f"{z.short} {side}", zone_id=zid, lat=z.lat + dlat, lng=z.lng + dlng))
+        s.add_all(subs)
+        s.flush()
+        for i, f in enumerate(fs):
+            f.substation_id = subs[i * n // len(fs)].id
+    s.flush()
+    from .services.network import ensure_routes
+    ensure_routes(s)  # sandbox feeder routes until the utility's GIS export is imported
+    s.commit()
+
+
 def _ev(s: Session, o: Outage, kind: str, text: str, user: str, at) -> None:
     s.add(OutageEvent(outage_id=o.id, kind=kind, text=text, user_name=user, at=at))
 
 
-def _historical(s: Session, rng: random.Random, name: str, cat: int, landfall, actual_vs_predicted: float) -> None:
-    """A closed storm with a full, consistent record: tickets, crews' work, ETRs, mutual aid, comms."""
+def _historical(s: Session, rng: random.Random, name: str, cat: int, landfall, actual_vs_predicted: float, rain: dict | None = None) -> None:
+    """A closed storm with a full, consistent record: tickets, crews' work, ETRs, mutual aid, comms.
+    `rain` (rainfall fields) makes it a Rain Event instead of a hurricane."""
     from .services.connector import new_ticket
-    e = StormEvent(name=name, kind="Hurricane" if cat else "Tropical Storm", status="closed", category=cat,
-                   max_wind_mph={1: 85, 2: 105}[cat], pressure_mb=975 - cat * 5, lat=27.6, lng=-82.7, movement="NE",
-                   landfall_at=landfall, track=[], created_at=landfall - timedelta(days=4), activated_at=landfall - timedelta(hours=2),
-                   restoring_at=landfall + timedelta(hours=14), closed_at=landfall + timedelta(days=4))
+    from .services.events import RAIN
+    e = StormEvent(name=name, kind=RAIN if rain else "Hurricane" if cat else "Tropical Storm", status="closed", category=cat,
+                   max_wind_mph=30 if rain else {1: 85, 2: 105}[cat], pressure_mb=1008 if rain else 975 - cat * 5, lat=27.6, lng=-82.7,
+                   movement="" if rain else "NE", landfall_at=landfall, track=[], created_at=landfall - timedelta(days=4),
+                   activated_at=landfall - timedelta(hours=2), restoring_at=landfall + timedelta(hours=14), closed_at=landfall + timedelta(days=4),
+                   **(rain or {}))
     s.add(e)
     s.flush()
     from .services.prediction import predict

@@ -9,8 +9,12 @@ import { dt, fmt, pct } from "../lib/format";
 interface PublicMap {
   event: { name: string; status: string; landfall_at: string | null } | null; customers_out: number; restored_pct: number | null; sample_addresses: string[];
   zones: { id: string; short: string; lat: number; lng: number; customers: number; customers_out: number; pct_out: number; etr_at: string | null }[];
+  circuits?: { id: string; zone: string; substation: string | null; lat: number; lng: number; customers_out: number; etr_at: string | null; confidence: number; route: [number, number][][] }[];
 }
-interface Lookup { status: "no_outage" | "restored" | "etr" | "confirmed"; zone: string; address: string; event: string | null; etr_at?: string; crews?: number; confidence?: number }
+interface Lookup {
+  status: "no_outage" | "restored" | "etr" | "confirmed"; zone: string; address: string; circuit?: string; event: string | null;
+  level?: "circuit" | "zone"; etr_at?: string; crews?: number; confidence?: number;
+}
 
 /** Customer-facing outage center (no sign-in). Always light, as on the utility website (forced in main.tsx). */
 export default function PublicOutageMap() {
@@ -61,7 +65,9 @@ export default function PublicOutageMap() {
                   {result.status === "etr" && result.etr_at && <>
                     <Text size="xs" tt="uppercase" fw={600} c="dimmed" mt="xs">Estimated restoration</Text>
                     <Title order={2} c="#0b3d91">{dt(result.etr_at)}</Title>
-                    <Text size="sm" c="dimmed" mt={4}>{result.crews} crews are working in {result.zone}. This estimate updates automatically.</Text>
+                    <Text size="sm" c="dimmed" mt={4}>{result.level === "circuit"
+                      ? `Estimate for your circuit ${result.circuit} in ${result.zone}: ${result.crews} crews are on it. This estimate updates automatically.`
+                      : `${result.crews} crews are working in ${result.zone}. This estimate updates automatically.`}</Text>
                     <Badge mt="sm" variant="light" leftSection={<IconClock size={12} />}>{result.confidence}% confidence</Badge>
                   </>}
                 </Paper>
@@ -76,9 +82,15 @@ export default function PublicOutageMap() {
           <Grid.Col span={{ base: 12, md: 7 }}>
             <Card withBorder radius="md" padding="xs">
               <TerritoryMap light height={480} zones={(data?.zones ?? []).map(z => ({ id: z.id, short: z.short, lat: z.lat, lng: z.lng, customers: z.customers, value: z.pct_out,
-                popup: <div><b>{z.short}</b><br />{fmt(z.customers_out)} customers out<br />{z.etr_at ? `Estimated restoration ${dt(z.etr_at)}` : z.customers_out ? "Assessing damage" : "No outages"}</div> }))} />
+                popup: <div><b>{z.short}</b><br />{fmt(z.customers_out)} customers out<br />{z.etr_at ? `Estimated restoration ${dt(z.etr_at)}` : z.customers_out ? "Assessing damage" : "No outages"}</div> }))}
+                lines={(data?.circuits ?? []).filter(c => c.route.length).map(c => ({ id: c.id, lines: c.route, color: "#2b6bff", weight: 4,
+                  popup: <div><b>Circuit {c.id}</b> · {c.zone}<br />Estimated restoration {dt(c.etr_at)}<br />{c.confidence}% confidence</div> }))}
+                pins={Object.values((data?.circuits ?? []).reduce<Record<string, NonNullable<PublicMap["circuits"]>>>((acc, c) => {
+                  (acc[c.substation ?? c.id] ??= []).push(c); return acc;
+                }, {})).map(cs => ({ id: cs[0].substation ?? cs[0].id, lat: cs[0].lat, lng: cs[0].lng, color: "#2b6bff",
+                  popup: <div><b>{cs[0].substation ?? cs[0].zone} area</b>{cs.map(c => <div key={c.id}>Circuit {c.id}: back by {dt(c.etr_at)} ({c.confidence}% confidence)</div>)}</div> }))} />
             </Card>
-            <Text size="xs" c="dimmed" mt="xs">Circles show the share of customers without power by community. Updated every 30 seconds. <Anchor href="/login" size="xs">Staff sign-in</Anchor></Text>
+            <Text size="xs" c="dimmed" mt="xs">Circles show the share of customers without power by community; blue lines are circuits with their own restoration time. Updated every 30 seconds. <Anchor href="/login" size="xs">Staff sign-in</Anchor></Text>
           </Grid.Col>
         </Grid>
       </Container>

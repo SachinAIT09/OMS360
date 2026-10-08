@@ -4,17 +4,38 @@ export type OutageStatus = "reported" | "assessed" | "assigned" | "in_progress" 
 
 export interface User { id: number; email: string; name: string; title: string; role: Role; role_label: string; active: boolean; last_login_at: string | null; permissions: string[] }
 
+export const EVENT_KINDS = ["Hurricane", "Tropical Storm", "Tropical Depression", "Severe Thunderstorm", "Winter Storm", "Rain Event"] as const;
+
 export interface TrackPoint { lat: number; lng: number; at: string; observed: boolean }
 export interface StormEvent {
   id: number; name: string; kind: string; source: "manual" | "nhc"; nhc_id: string | null; status: EventStatus; category: number;
   max_wind_mph: number; pressure_mb: number; lat: number; lng: number; movement: string; landfall_at: string | null; track: TrackPoint[] | null;
   notes: string; created_at: string; activated_at: string | null; restoring_at: string | null; closed_at: string | null;
+  /** Rain events only (kind "Rain Event"); landfall_at is then the rain onset. */
+  rain_total_in: number | null; rain_rate_in_hr: number | null; duration_h: number | null; soil_saturation: number | null;
   predicted?: number | null; tickets?: number; customers_affected?: number;
 }
 
-export interface PredZone { id: string; name: string; short: string; customers: number; pred: number; pct: number; eta_h: number; driver: string }
+export interface Hazard { gust_mph?: number; rain_in?: number; surge_ft?: number; arrival_at?: string }
+export interface PredZone { id: string; name: string; short: string; customers: number; pred: number; pct: number; eta_h: number; driver: string; hazard?: Hazard | null }
+export interface PredCircuit {
+  id: string; zone_id: string; zone: string; substation: string | null; region_id: string | null; region: string | null; customers: number; pred: number;
+  pct: number; eta_h: number; low_h: number; high_h: number; confidence: number; overhead_pct: number; years_since_trim: number;
+}
+export interface PredRegion { id: string | null; name: string; pred: number; circuits: number; eta_h: number; low_h: number; high_h: number; last_h: number; last_high_h: number; confidence: number }
+export interface ForecastZone extends Hazard { zone_id: string; zone: string; filled?: boolean }
+export interface ForecastInfo {
+  latest: { id: number; source: string; issued_at: string; created_by: string; created_at: string; zones: ForecastZone[] } | null;
+  history: { id: number; source: string; issued_at: string; created_by: string }[]; sample_csv: string;
+}
+export interface Calibration {
+  window_h: number; snapshots: number; simulated_pct: number; gap_pts: number | null;
+  bands: { band: string; count: number; promised_pct: number; actual_pct: number; mae_h: number }[];
+}
 export interface Prediction {
-  category: number; wind_mph: number; surge: string; pred_total: number; total_customers: number; zones: PredZone[];
+  kind?: "wind" | "rain"; scenario?: string; rain_in?: number | null; forecast?: { id: number; source: string; issued_at: string } | null;
+  circuits?: PredCircuit[]; regions?: PredRegion[];
+  category: number; wind_mph: number; surge: string | null; pred_total: number; total_customers: number; zones: PredZone[];
   required: Crew3; internal: Crew3; committed: Crew3; needed: Crew3; coverage: number; avg_eta_h: number; p95_eta_h: number; confidence: number;
   critical_at_risk: number; facilities: { id: number; name: string; kind: string; type: string; feeder: string; backup: string; risk: string }[];
   lift_stations_at_risk: number; lift_stations_total: number; generators_needed: number; water_customers_at_risk: number; boil_water_zones: string[];
@@ -33,6 +54,20 @@ export interface EventStats {
   customers_out: number; restored_pct: number; crews_by_status: Record<string, number>; line_workers_on_hand: number; critical_open: number;
   zones: ZoneStat[]; last_etr_at: string | null; published_zones: number;
 }
+export interface CircuitEtr {
+  id: string; customers: number | null; lat: number; lng: number; substation_id: string | null; substation: string | null; zone_id: string; zone: string;
+  region_id: string | null; region: string | null; customers_out: number; open_tickets: number; crews: number; etr_at: string | null;
+  confidence: number; published: boolean; published_at: string | null;
+}
+export interface RegionEtr {
+  id: string; name: string; zones: string[]; customers_out: number; open_tickets: number; circuits_out: number; etr_at: string | null;
+  confidence: number | null; circuits_published: number; circuits_ready: number;
+}
+export interface RoutesInfo {
+  feeders: { id: string; zone: string | null; substation: string | null; source: "synthetic" | "imported" | null; route: [number, number][][] }[];
+  counts: Record<string, number>; substations: { id: string; name: string; lat: number; lng: number }[];
+}
+export interface NetworkEtrs { regions: RegionEtr[]; circuits: CircuitEtr[]; publish_confidence: number; can_publish: boolean }
 export interface Curve { start: string; points: { hour: number; at: string; out: number; restored_pct: number }[] }
 export interface Task { id: number; event_id: number | null; title: string; owner_role: string; status: "open" | "done"; due_at: string | null; created_at: string; done_at: string | null }
 export interface Audit { id: number; at: string; user: string; action: string; entity: string; entity_id: string; event_id: number | null; detail: string }
@@ -48,6 +83,8 @@ export interface Outage {
   customers: number; priority: "critical" | "high" | "normal"; facility_id: number | null; status: OutageStatus; source: string; lat: number; lng: number;
   crew: { id: number; code: string; company: string } | null; reported_at: string; assigned_at: string | null; started_at: string | null;
   restored_at: string | null; etr_at: string | null; etr_committed: boolean; etr_override: boolean; notes: string;
+  /** How settled this ticket's ETR is (open tickets only). */
+  etr_confidence: number | null;
 }
 export interface OutageDetail extends Outage { facility: string | null; job_hours: number; history: { id: number; at: string; kind: string; text: string; user: string }[]; allowed: OutageStatus[] }
 export interface Page<T> { total: number; page: number; size: number; items: T[] }

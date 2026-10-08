@@ -47,7 +47,7 @@ function Body({ id }: { id: number }) {
 
       <SimpleGrid cols={3}>
         <Stat k="Customers" v={fmt(o.customers)} />
-        <Stat k={open ? "ETR" : "Restored"} v={open ? (o.etr_at ? dt(o.etr_at) : "—") : dt(o.restored_at)} sub={open && o.etr_at ? (o.etr_override ? "manual" : o.etr_committed ? "committed" : "AI estimate") : undefined} />
+        <Stat k={open ? "ETR" : "Restored"} v={open ? (o.etr_at ? dt(o.etr_at) : "—") : dt(o.restored_at)} sub={open && o.etr_at ? `${o.etr_override ? "manual" : o.etr_committed ? "committed" : "AI estimate"}${o.etr_confidence != null ? ` · ${o.etr_confidence}% confidence` : ""} · circuit ${o.feeder_id}` : undefined} />
         <Stat k="Est. job time" v={`${o.job_hours} h`} sub={`${label(o.cause)} · ${label(o.damage)}`} />
       </SimpleGrid>
 

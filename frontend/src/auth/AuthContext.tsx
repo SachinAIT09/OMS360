@@ -1,6 +1,6 @@
 import { createContext, useCallback, useContext, useEffect, useState, type ReactNode } from "react";
 import { useQueryClient } from "@tanstack/react-query";
-import { api, tokenStore } from "../api/client";
+import { api, ApiError, tokenStore } from "../api/client";
 import type { User } from "../api/types";
 
 interface Auth {
@@ -35,7 +35,16 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, [qc]);
 
   const login = useCallback(async (email: string, password: string) => {
-    const r = await api.post<{ token: string; user: User }>("/auth/login", { email, password });
+    // A free-tier server that was asleep answers 502/503 or not at all while it boots: keep trying for about a minute.
+    const deadline = Date.now() + 60_000;
+    let r: { token: string; user: User };
+    for (;;) {
+      try { r = await api.post<{ token: string; user: User }>("/auth/login", { email, password }); break; }
+      catch (e) {
+        if (!(e instanceof ApiError && [0, 502, 503, 504].includes(e.status)) || Date.now() > deadline) throw e;
+        await new Promise(res => setTimeout(res, 3000));
+      }
+    }
     tokenStore.set(r.token);
     setUser(r.user);
   }, []);

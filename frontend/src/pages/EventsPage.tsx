@@ -6,12 +6,12 @@ import { useDisclosure } from "@mantine/hooks";
 import { IconAlertTriangle, IconCloudDownload, IconPlus, IconSatellite } from "@tabler/icons-react";
 import { api } from "../api/client";
 import { useAction, useGet } from "../api/hooks";
-import type { NhcStorm, StormEvent } from "../api/types";
+import { EVENT_KINDS, type NhcStorm, type StormEvent } from "../api/types";
 import { useAuth } from "../auth/AuthContext";
 import { useCurrentEvent } from "../auth/EventContext";
 import { EventStatusBadge } from "../components/badges";
 import { Empty, Loading, PageHeader } from "../components/common";
-import { ago, date, dt, fmt } from "../lib/format";
+import { ago, date, dt, fmt, intensity, isRain } from "../lib/format";
 
 export default function EventsPage() {
   const { can } = useAuth();
@@ -33,14 +33,14 @@ export default function EventsPage() {
           <Table.ScrollContainer minWidth={900}>
             <Table>
               <Table.Thead><Table.Tr>
-                <Table.Th>Event</Table.Th><Table.Th>Status</Table.Th><Table.Th>Intensity</Table.Th><Table.Th>Landfall</Table.Th>
+                <Table.Th>Event</Table.Th><Table.Th>Status</Table.Th><Table.Th>Intensity</Table.Th><Table.Th>Landfall / onset</Table.Th>
                 <Table.Th ta="right">Predicted</Table.Th><Table.Th ta="right">Tickets</Table.Th><Table.Th ta="right">Customers affected</Table.Th><Table.Th>Source</Table.Th><Table.Th>Created</Table.Th>
               </Table.Tr></Table.Thead>
               <Table.Tbody>{data.map(e => (
                 <Table.Tr key={e.id} className="row-click" onClick={() => { setEventId(e.id); go(`/events/${e.id}`); }}>
                   <Table.Td><Text fw={600} size="sm">{e.name}</Text><Text size="xs" c="dimmed">{e.kind}</Text></Table.Td>
                   <Table.Td><EventStatusBadge status={e.status} /></Table.Td>
-                  <Table.Td>Cat {e.category} · {e.max_wind_mph} mph</Table.Td>
+                  <Table.Td>{intensity(e)}</Table.Td>
                   <Table.Td>{dt(e.landfall_at)}</Table.Td>
                   <Table.Td ta="right" className="tabular">{fmt(e.predicted)}</Table.Td>
                   <Table.Td ta="right" className="tabular">{fmt(e.tickets)}</Table.Td>
@@ -61,26 +61,39 @@ export default function EventsPage() {
 
 function NewEventModal({ opened, onClose, onCreated }: { opened: boolean; onClose: () => void; onCreated: (e: StormEvent) => void }) {
   const form = useForm({
-    initialValues: { name: "", kind: "Hurricane", category: 2, max_wind_mph: 105, pressure_mb: 970, lat: 25.5, lng: -85.5, heading_deg: 30, speed_mph: 12, landfall_at: null as Date | null, notes: "" },
+    initialValues: { name: "", kind: "Hurricane", category: 2, max_wind_mph: 105, pressure_mb: 970, lat: 25.5, lng: -85.5, heading_deg: 30, speed_mph: 12, landfall_at: null as Date | null, notes: "",
+      rain_total_in: 4, rain_rate_in_hr: 1, duration_h: 12, soil_saturation: 50 },
     validate: { name: (v: string) => (v.trim().length < 2 ? "Name the event" : null) },
   });
-  const create = useAction((v: typeof form.values) => api.post<StormEvent>("/events", { ...v, landfall_at: v.landfall_at?.toISOString() ?? null }),
+  const rain = isRain(form.values);
+  const create = useAction((v: typeof form.values) => api.post<StormEvent>("/events", {
+    ...v, landfall_at: v.landfall_at?.toISOString() ?? null,
+    ...(isRain(v) ? { soil_saturation: v.soil_saturation / 100 } : { rain_total_in: null, rain_rate_in_hr: null, duration_h: null, soil_saturation: null }),
+  }),
     { success: "Storm event created", invalidate: ["/events"] });
   return (
     <Modal opened={opened} onClose={onClose} title="New storm event" size="lg">
       <form onSubmit={form.onSubmit(async v => { const e = await create.mutateAsync(v); onClose(); form.reset(); onCreated(e); })}>
         <Stack>
           <Grid>
-            <Grid.Col span={8}><TextInput label="Name" placeholder="Hurricane …" {...form.getInputProps("name")} /></Grid.Col>
-            <Grid.Col span={4}><Select label="Type" data={["Hurricane", "Tropical Storm", "Tropical Depression", "Severe Thunderstorm", "Winter Storm"]} {...form.getInputProps("kind")} /></Grid.Col>
-            <Grid.Col span={4}><NumberInput label="Forecast category" min={1} max={5} {...form.getInputProps("category")} /></Grid.Col>
-            <Grid.Col span={4}><NumberInput label="Max wind (mph)" min={20} max={220} {...form.getInputProps("max_wind_mph")} /></Grid.Col>
-            <Grid.Col span={4}><NumberInput label="Pressure (mb)" min={850} max={1030} {...form.getInputProps("pressure_mb")} /></Grid.Col>
-            <Grid.Col span={3}><NumberInput label="Latitude" decimalScale={2} {...form.getInputProps("lat")} /></Grid.Col>
-            <Grid.Col span={3}><NumberInput label="Longitude" decimalScale={2} {...form.getInputProps("lng")} /></Grid.Col>
-            <Grid.Col span={3}><NumberInput label="Heading (°)" min={0} max={359} {...form.getInputProps("heading_deg")} /></Grid.Col>
-            <Grid.Col span={3}><NumberInput label="Speed (mph)" min={0} max={60} {...form.getInputProps("speed_mph")} /></Grid.Col>
-            <Grid.Col span={12}><DateTimePicker label="Expected landfall" placeholder="Optional" clearable valueFormat="ddd MMM D, h:mm A" {...form.getInputProps("landfall_at")} /></Grid.Col>
+            <Grid.Col span={8}><TextInput label="Name" placeholder={rain ? "October Rain Event" : "Hurricane …"} {...form.getInputProps("name")} /></Grid.Col>
+            <Grid.Col span={4}><Select label="Type" data={[...EVENT_KINDS]} allowDeselect={false} {...form.getInputProps("kind")} /></Grid.Col>
+            {rain ? <>
+              <Grid.Col span={3}><NumberInput label="Rainfall (in)" min={0.5} max={40} decimalScale={1} {...form.getInputProps("rain_total_in")} /></Grid.Col>
+              <Grid.Col span={3}><NumberInput label="Peak rate (in/hr)" min={0.1} max={8} decimalScale={1} step={0.25} {...form.getInputProps("rain_rate_in_hr")} /></Grid.Col>
+              <Grid.Col span={3}><NumberInput label="Duration (h)" min={1} max={240} {...form.getInputProps("duration_h")} /></Grid.Col>
+              <Grid.Col span={3}><NumberInput label="Soil saturation" min={0} max={100} suffix="%" {...form.getInputProps("soil_saturation")} /></Grid.Col>
+              <Grid.Col span={12}><DateTimePicker label="Rain onset" placeholder="Optional" clearable valueFormat="ddd MMM D, h:mm A" {...form.getInputProps("landfall_at")} /></Grid.Col>
+            </> : <>
+              <Grid.Col span={4}><NumberInput label="Forecast category" min={1} max={5} {...form.getInputProps("category")} /></Grid.Col>
+              <Grid.Col span={4}><NumberInput label="Max wind (mph)" min={20} max={220} {...form.getInputProps("max_wind_mph")} /></Grid.Col>
+              <Grid.Col span={4}><NumberInput label="Pressure (mb)" min={850} max={1030} {...form.getInputProps("pressure_mb")} /></Grid.Col>
+              <Grid.Col span={3}><NumberInput label="Latitude" decimalScale={2} {...form.getInputProps("lat")} /></Grid.Col>
+              <Grid.Col span={3}><NumberInput label="Longitude" decimalScale={2} {...form.getInputProps("lng")} /></Grid.Col>
+              <Grid.Col span={3}><NumberInput label="Heading (°)" min={0} max={359} {...form.getInputProps("heading_deg")} /></Grid.Col>
+              <Grid.Col span={3}><NumberInput label="Speed (mph)" min={0} max={60} {...form.getInputProps("speed_mph")} /></Grid.Col>
+              <Grid.Col span={12}><DateTimePicker label="Expected landfall" placeholder="Optional" clearable valueFormat="ddd MMM D, h:mm A" {...form.getInputProps("landfall_at")} /></Grid.Col>
+            </>}
             <Grid.Col span={12}><Textarea label="Notes" autosize minRows={2} {...form.getInputProps("notes")} /></Grid.Col>
           </Grid>
           <Group justify="flex-end"><Button variant="default" onClick={onClose}>Cancel</Button><Button type="submit" loading={create.isPending}>Create event</Button></Group>

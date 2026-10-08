@@ -15,9 +15,10 @@ from ..fmt import fmt
 from ..models import (Crew, Message, MutualAidRequest, Outage, PredictionRun, PublishedEtr, Recommendation, StagingYard,
                       StormEvent, Task, utcnow)
 from . import comms, ops
+from .events import is_rain
 from .prediction import predict
 
-RECURRING = {"dispatch_backlog", "publish_etrs"}  # can come back after being handled
+RECURRING = {"dispatch_backlog", "publish_etrs", "publish_circuit_etrs"}  # can come back after being handled
 MA_PARTNERS = [("Southern Grid Cooperative", "Georgia", 0.4), ("Carolina Power Alliance", "North Carolina", 0.35),
                ("Tennessee Valley Line Services", "Tennessee", 0.25)]
 
@@ -40,7 +41,8 @@ def _rules(s: Session, e: StormEvent) -> list[dict]:
     p = pr.result if pr else None
     prep = e.status in ("monitoring", "preparing")
     now = utcnow()
-    hours_to_landfall = (e.landfall_at - now).total_seconds() / 3600 if e.landfall_at else None
+    hours_to_landfall = (e.landfall_at - now).total_seconds() / 3600 if e.landfall_at else None  # rain events: hours to rain onset
+    rain = is_rain(e)
 
     if prep and not p:
         out.append(dict(key="run_prediction", priority="High", title=f"Run an impact prediction for {e.name}",
@@ -52,15 +54,21 @@ def _rules(s: Session, e: StormEvent) -> list[dict]:
         if need["line"] > 0:
             out.append(dict(key="mutual_aid", priority="Critical",
                             title=f"Request {fmt(need['line'])} mutual-aid line workers + {fmt(need['tree'])} tree workers",
-                            detail=f"The Cat {p['category']} prediction needs {fmt(p['required']['line'])} line workers; {fmt(p['internal']['line'])} are on the roster"
+                            detail=f"The {p.get('scenario', 'Cat ' + str(p['category']))} prediction needs {fmt(p['required']['line'])} line workers; {fmt(p['internal']['line'])} are on the roster"
                                    f" and {fmt(p['committed']['line'])} already requested. Crews need 36–60 h to arrive.",
                             impact="Cuts average restoration time by ~" + str(round((1 - min(1, p['coverage']) ** 0.75) * 100)) + "%",
                             why=f"Predicted peak is {fmt(p['pred_total'])} customers out. One line worker restores ~185 customers per storm event in this territory."))
         if s.scalar(select(func.count(StagingYard.id)).where(StagingYard.active.is_(False))):
             out.append(dict(key="staging", priority="High", title="Open all inland staging yards and pre-stage crews",
-                            detail="Moves available internal line crews to staging yards outside surge zones A/B.",
+                            detail="Moves available internal line crews to staging yards outside " + ("flood-prone zones and low-water crossings." if rain else "surge zones A/B."),
                             impact="Crews on site 6–9 h faster after the all-clear",
-                            why="Yards were selected outside the predicted surge envelope and within 25 minutes of the highest-impact zones."))
+                            why=("Yards are on high ground, clear of predicted flooding, and within 25 minutes of the highest-impact zones." if rain else
+                                 "Yards were selected outside the predicted surge envelope and within 25 minutes of the highest-impact zones.")))
+        if rain:
+            out.append(dict(key="flood_assets", priority="High", title="Pre-position pumps and high-water vehicles for critical facilities",
+                            detail="Portable pumps at substations in low-lying zones, and high-clearance trucks for crews serving hospitals and water plants.",
+                            impact="Keeps substations dry and crews able to reach critical customers through standing water",
+                            why=f"{p.get('scenario', 'Heavy rain')} on saturated ground floods low-lying substations and roads first."))
         if not _has_message(s, e.id):
             out.append(dict(key="precomms", priority="High", title="Draft the pre-storm customer campaign (X, Facebook, SMS, email, IVR)",
                             detail="Creates AI drafts from the latest prediction and sends them to the approval queue.",
@@ -69,7 +77,7 @@ def _rules(s: Session, e: StormEvent) -> list[dict]:
         if not _has_message(s, e.id, "medical"):
             out.append(dict(key="medical", priority="Critical", title=f"Contact {fmt(MEDICAL_NEEDS)} medical-needs customers",
                             detail="Creates SMS and IVR outreach to life-support customers for approval.",
-                            impact="Moves vulnerable customers to shelters before landfall",
+                            impact="Moves vulnerable customers to shelters before " + ("the heaviest rain" if rain else "landfall"),
                             why="These customers have registered powered medical equipment; most live in zones with high predicted outage probability."))
         if p["generators_needed"]:
             out.append(dict(key="generators", priority="High", title=f"Deploy {p['generators_needed']} portable generators to water lift stations",
@@ -81,14 +89,15 @@ def _rules(s: Session, e: StormEvent) -> list[dict]:
                         detail="Inventory covers ~35% of predicted need; vendors need 48 h lead time.",
                         impact="Prevents a materials bottleneck on day 2–3",
                         why="Usage per 1,000 customers out is taken from the last three major storms."))
-        if hours_to_landfall is not None and hours_to_landfall < 36:
+        if hours_to_landfall is not None and hours_to_landfall < 36 and not rain:
             out.append(dict(key="eoc", priority="High", title="Activate the Emergency Operations Center — Level 1",
                             detail="Opens a 24/7 storm desk, logistics cell and County EOC liaison.", impact="One command structure through landfall",
                             why="Forecast sustained winds exceed the Level-1 activation threshold (74 mph)."))
         if e.status == "preparing" and hours_to_landfall is not None and hours_to_landfall < 6:
             out.append(dict(key="activate", priority="Critical", title=f"Move {e.name} to Active",
-                            detail="Landfall is imminent. Activating starts outage intake from the OMS/AMI connector into this event.",
-                            impact="Outage tickets are tracked against this storm", why="Hurricane conditions are expected within 6 hours."))
+                            detail=("Heavy rain is about to start." if rain else "Landfall is imminent.") + " Activating starts outage intake from the OMS/AMI connector into this event.",
+                            impact="Outage tickets are tracked against this storm",
+                            why="Heavy rain is expected within 6 hours." if rain else "Hurricane conditions are expected within 6 hours."))
 
     if e.status in ("active", "restoring"):
         st = ops.event_stats(s, e)
@@ -104,6 +113,14 @@ def _rules(s: Session, e: StormEvent) -> list[dict]:
             out.append(dict(key="publish_etrs", priority="High", title=f"Publish restoration times for {len(unpublished)} zones",
                             detail="Customers see a specific time on the outage map and receive SMS instead of 'multiple days'.",
                             impact="Fewer calls; customers can plan", why="ETRs are computed from open tickets, assigned crews and damage type."))
+        ready = [c for c in ops.network_etrs(s, e)["circuits"] if not c["published"] and c["confidence"] >= ops.PUBLISH_CONFIDENCE]
+        if ready:
+            out.append(dict(key="publish_circuit_etrs", priority="High",
+                            title=f"Publish circuit-level ETRs for {len(ready)} circuits at ≥{ops.PUBLISH_CONFIDENCE}% confidence",
+                            detail=f"{fmt(sum(c['customers_out'] for c in ready))} customers on these circuits get a specific restoration time for their own circuit "
+                                   "instead of the zone-wide one.",
+                            impact="Tighter, more trustworthy ETRs for smaller areas",
+                            why="These circuits have damage assessed and crews committed, so their ETRs are unlikely to move."))
         if not _has_message(s, e.id, "out") and st["customers_out"]:
             out.append(dict(key="outage_notice", priority="High", title=f"Notify {fmt(st['customers_out'])} customers that their outage is known",
                             detail="SMS to affected meters plus a website banner.", impact="Prevents call-center overload",
@@ -204,7 +221,7 @@ def execute(s: Session, e: StormEvent, r: Recommendation, user: str) -> str:
     if k == "verify":
         n = _drafts(s, e, "restored", ["sms"], "all", user)
         return "Verification SMS sent to the approval queue."
-    if k in ("generators", "materials", "eoc"):
+    if k in ("generators", "materials", "eoc", "flood_assets"):
         title = r.title
         s.add(Task(event_id=e.id, title=title, owner_role="ops_manager", due_at=e.landfall_at or utcnow() + timedelta(hours=24)))
         bus.publish("tasks")
@@ -229,6 +246,11 @@ def execute(s: Session, e: StormEvent, r: Recommendation, user: str) -> str:
                 s.add(PublishedEtr(event_id=e.id, zone_id=z["id"], published_by=user)); n += 1
         bus.publish("restoration")
         return f"ETRs published for {n} zones."
+    if k == "publish_circuit_etrs":
+        from ..routers.field import publish_circuits
+        n = publish_circuits(s, e, user)
+        bus.publish("restoration")
+        return f"ETRs published for {n} circuits."
     if k == "release_mutual_aid":
         arrived = s.scalars(select(MutualAidRequest).where(MutualAidRequest.event_id == e.id, MutualAidRequest.status == "arrived")).all()
         n = sum(ops.release_mutual_aid(s, req) for req in arrived[: len(arrived) // 2 or 1])

@@ -124,7 +124,7 @@ export default function CommsPage() {
               <Text fw={600} p="md" pb={0}>Audiences</Text>
               <Table mt="xs"><Table.Tbody>{(audiences.data ?? []).slice(0, 5).map(a => (
                 <Table.Tr key={a.id}><Table.Td>{a.name}</Table.Td><Table.Td ta="right" className="tabular">{fmt(a.count)}</Table.Td></Table.Tr>))}</Table.Tbody></Table>
-              <Text size="xs" c="dimmed" p="sm">Zone audiences are also available when composing.</Text>
+              <Text size="xs" c="dimmed" p="sm">Zone, region and circuit audiences are also available when composing.</Text>
             </Card>
           </Stack>
         </Grid.Col>

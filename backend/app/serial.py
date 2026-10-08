@@ -13,6 +13,7 @@ def event(e: StormEvent) -> dict:
     return {"id": e.id, "name": e.name, "kind": e.kind, "source": e.source, "nhc_id": e.nhc_id, "status": e.status,
             "category": e.category, "max_wind_mph": e.max_wind_mph, "pressure_mb": e.pressure_mb, "lat": e.lat, "lng": e.lng,
             "movement": e.movement, "landfall_at": e.landfall_at, "track": e.track or [], "notes": e.notes,
+            "rain_total_in": e.rain_total_in, "rain_rate_in_hr": e.rain_rate_in_hr, "duration_h": e.duration_h, "soil_saturation": e.soil_saturation,
             "created_at": e.created_at, "activated_at": e.activated_at, "restoring_at": e.restoring_at, "closed_at": e.closed_at}
 
 
@@ -27,7 +28,13 @@ def outage(o: Outage, etr=None, zone_name: str | None = None) -> dict:
             "priority": o.priority, "facility_id": o.facility_id, "status": o.status, "source": o.source, "lat": o.lat, "lng": o.lng,
             "crew": {"id": o.crew.id, "code": o.crew.code, "company": o.crew.company} if o.crew else None,
             "reported_at": o.reported_at, "assigned_at": o.assigned_at, "started_at": o.started_at, "restored_at": o.restored_at,
-            "etr_at": o.etr_at or etr, "etr_committed": bool(o.etr_at), "etr_override": o.etr_override, "notes": o.notes}
+            "etr_at": o.etr_at or etr, "etr_committed": bool(o.etr_at), "etr_override": o.etr_override, "notes": o.notes,
+            "etr_confidence": _ticket_confidence(o) if o.status in ("reported", "assessed", "assigned", "in_progress") else None}
+
+
+def _ticket_confidence(o: Outage) -> int:
+    from .services.ops import ticket_confidence
+    return ticket_confidence(o)
 
 
 def outage_event(h: OutageEvent) -> dict:

@@ -10,7 +10,7 @@ from sqlalchemy.orm import Session
 
 from .. import bus, serial, weather
 from ..auth import current_user, current_user_query, require
-from ..data import SAMPLE_ADDRESSES
+from ..data import SAMPLE_ADDRESSES, address_feeder
 from ..db import get_session, get_setting
 from ..models import (ChatConversation, ChatMessage, Crew, Facility, Feeder, Message, NotificationRule, Outage, PublishedEtr, StagingYard, StormEvent,
                       User, Zone, utcnow)
@@ -75,7 +75,7 @@ def audiences(event_id: int | None = None, s: Session = Depends(get_session), _:
     out = 0
     if event_id:
         out = ops.event_stats(s, get_event(s, event_id))["customers_out"]
-    return comms.audiences(s, out)
+    return comms.audiences(s, out, s.get(StormEvent, event_id) if event_id else None)
 
 
 class DraftIn(BaseModel):
@@ -108,7 +108,8 @@ class MessageIn(BaseModel):
 
 def _recipients(s: Session, channel: str, audience: str, event_id: int | None) -> int:
     out = ops.event_stats(s, s.get(StormEvent, event_id))["customers_out"] if event_id and audience == "out" else 0
-    aud = {a["id"]: a for a in comms.audiences(s, out)}.get(audience)
+    e = s.get(StormEvent, event_id) if event_id else None
+    aud = {a["id"]: a for a in comms.audiences(s, out, e if audience.startswith("circuit") else None)}.get(audience)
     if not aud:
         raise HTTPException(422, "Unknown audience")
     return comms.recipients(channel, aud["count"])
@@ -352,15 +353,19 @@ def clear_chat(s: Session = Depends(get_session), user: User = Depends(current_u
 
 # ---------------------------------------------------------------- public outage map (no sign-in)
 def _public_event(s: Session) -> StormEvent | None:
-    return s.scalars(select(StormEvent).where(StormEvent.status.in_(["active", "restoring", "preparing", "monitoring"]))
-                     .order_by(StormEvent.created_at.desc())).first()
+    """The event customers see: the newest one with live outages, else the newest one being prepared for."""
+    for statuses in (["active", "restoring"], ["preparing", "monitoring"]):
+        e = s.scalars(select(StormEvent).where(StormEvent.status.in_(statuses)).order_by(StormEvent.created_at.desc())).first()
+        if e:
+            return e
+    return None
 
 
 @router.get("/public/outage-map", tags=["public"])
 def public_map(s: Session = Depends(get_session)):
     e = _public_event(s)
     if not e:
-        return {"event": None, "zones": [], "customers_out": 0, "restored_pct": None, "sample_addresses": [a for a, _ in SAMPLE_ADDRESSES]}
+        return {"event": None, "zones": [], "circuits": [], "customers_out": 0, "restored_pct": None, "sample_addresses": [a for a, _ in SAMPLE_ADDRESSES]}
     st = ops.event_stats(s, e)
     return {
         "event": {"name": e.name, "status": e.status, "landfall_at": e.landfall_at},
@@ -368,8 +373,15 @@ def public_map(s: Session = Depends(get_session)):
         "zones": [{"id": z["id"], "short": z["short"], "lat": z["lat"], "lng": z["lng"], "customers": z["customers"],
                    "customers_out": z["customers_out"], "pct_out": z["pct_out"],
                    "etr_at": z["etr_at"] if z["published"] else None} for z in st["zones"]],
+        "circuits": _public_circuits(s, e),
         "sample_addresses": [a for a, _ in SAMPLE_ADDRESSES],
     }
+
+
+def _public_circuits(s: Session, e: StormEvent) -> list[dict]:
+    routes = {f.id: f.route or [] for f in s.scalars(select(Feeder)).all()}
+    return [{**{k: c[k] for k in ("id", "zone", "substation", "lat", "lng", "customers_out", "etr_at", "confidence")}, "route": routes.get(c["id"], [])}
+            for c in ops.network_etrs(s, e)["circuits"] if c["published"]]
 
 
 @router.get("/public/lookup", tags=["public"])
@@ -383,14 +395,21 @@ def public_lookup(address: str, s: Session = Depends(get_session)):
         raise HTTPException(404, "We couldn't find that address in the Bayview service area.")
     zone = s.get(Zone, zid)
     e = _public_event(s)
-    base = {"zone": zone.short, "address": next((x for x, z in SAMPLE_ADDRESSES if z == zid), address)}
+    shown = next((x for x, z in SAMPLE_ADDRESSES if z == zid and (a == x.lower() or a in x.lower())), None) \
+        or next((x for x, z in SAMPLE_ADDRESSES if z == zid), address)
+    feeder = address_feeder(shown, list(s.scalars(select(Feeder.id).where(Feeder.zone_id == zid))))
+    base = {"zone": zone.short, "address": shown, "circuit": feeder}
     if not e or e.status in ("monitoring", "preparing"):
         return base | {"status": "no_outage", "event": e.name if e else None}
+    circuit = next((c for c in ops.network_etrs(s, e)["circuits"] if c["id"] == feeder), None)
+    if circuit and circuit["published"]:
+        return base | {"status": "etr", "level": "circuit", "event": e.name, "etr_at": circuit["etr_at"], "crews": circuit["crews"],
+                       "confidence": circuit["confidence"]}
     z = next(z for z in ops.event_stats(s, e)["zones"] if z["id"] == zid)
     if not z["customers_out"]:
         return base | {"status": "restored" if z["affected"] else "no_outage", "event": e.name}
     if z["published"]:
-        return base | {"status": "etr", "event": e.name, "etr_at": z["etr_at"], "crews": z["crews"], "confidence": z["confidence"]}
+        return base | {"status": "etr", "level": "zone", "event": e.name, "etr_at": z["etr_at"], "crews": z["crews"], "confidence": z["confidence"]}
     return base | {"status": "confirmed", "event": e.name}
 
 

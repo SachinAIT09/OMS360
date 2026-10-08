@@ -13,6 +13,7 @@ from ..fmt import fmt, fmt_dt, fmt_t, pct
 from ..models import Message, MutualAidRequest, Recommendation, StormEvent, Zone
 from . import comms, ops
 from .context import comms_context
+from .events import is_rain
 from .prediction import predict
 from .recommendations import latest_prediction
 
@@ -45,9 +46,23 @@ def answer(s: Session, q_raw: str, e: StormEvent | None, weather: dict | None = 
     zones = {z.short.lower(): z for z in s.scalars(select(Zone)).all()}
     zone = next((z for k, z in zones.items() if k in q), None)
     cat_m = re.search(r"cat(?:egory)?\s*([1-5])", q)
+    rain_m = re.search(r"(\d+(?:\.\d+)?)\s*(?:in|inch|inches|\")\b", q)
+    rain = is_rain(e)
     ev = f"/events/{e.id}"
+    after = "after the rain starts" if rain else "after landfall"
 
-    if cat_m and re.search(r"what if|if it|becomes|scenario|stronger|worse|instead", q):
+    if rain and rain_m and re.search(r"what if|if it|becomes|scenario|more|worse|instead", q):
+        r_in = float(rain_m.group(1))
+        p2 = predict(s, e, rain_in=r_in)
+        base = p["pred_total"] if p else 0
+        return _reply(f"If {e.name} brings **{r_in:g} inches of rain**:",
+                      [f"Predicted outages: **{fmt(p2['pred_total'])}**" + (f" ({'+' if p2['pred_total'] >= base else ''}{fmt(p2['pred_total'] - base)} vs current prediction)" if p else ""),
+                       f"Line workers needed: **{fmt(p2['required']['line'])}** — still to request: {fmt(p2['needed']['line'])}",
+                       f"95% restored about **{p2['p95_eta_h']} h** after the rain starts", f"Lift stations at risk: {p2['lift_stations_at_risk']}"],
+                      [_nav("Open prediction", f"{ev}?tab=prediction")],
+                      f"With {r_in:g} inches of rain, about {fmt(p2['pred_total'])} customers would lose power.")
+
+    if cat_m and not rain and re.search(r"what if|if it|becomes|scenario|stronger|worse|instead", q):
         c = int(cat_m.group(1))
         p2 = predict(s, e, c)
         base = p["pred_total"] if p else 0
@@ -66,7 +81,7 @@ def answer(s: Session, q_raw: str, e: StormEvent | None, weather: dict | None = 
         if p["needed"]["line"] > 0:
             rec = s.scalars(select(Recommendation).where(Recommendation.event_id == e.id, Recommendation.key == "mutual_aid", Recommendation.status == "open")).first()
             acts = [{"label": "Request mutual aid", "kind": "approve", "value": rec.id}] if rec else []
-            return _reply(f"**Yes — you need more people.** The Cat {p['category']} prediction needs **{fmt(p['required']['line'])}** line workers. "
+            return _reply(f"**Yes — you need more people.** The {p.get('scenario', 'Cat ' + str(p['category']))} prediction needs **{fmt(p['required']['line'])}** line workers. "
                           f"You have {fmt(p['internal']['line'])} on the roster and {fmt(p['committed']['line'])} requested — a gap of **{fmt(p['needed']['line'])}**.",
                           ma_line or ["No mutual aid requested yet. Crews need 36–60 h to arrive."], acts + [_nav("Open crews", "/crews")],
                           f"Yes. You still need {fmt(p['needed']['line'])} more line workers.")
@@ -117,6 +132,47 @@ def answer(s: Session, q_raw: str, e: StormEvent | None, weather: dict | None = 
         return _reply(f"**{n}** messages are waiting for approval and **{r}** recommendations need a decision.",
                       actions=[_nav("Approval queue", "/communications?tab=pending"), _nav("Overview", "/")])
 
+    fdr_m = re.search(r"fdr-[a-z]{3}-\d{2}", q)
+    region_m = re.search(r"(north|central|east|south(?: shore)?)\s+region|region\s+(north|central|east|south)", q)
+    if not live and p and p.get("circuits") and (fdr_m or region_m):
+        if fdr_m:
+            c = next((c for c in p["circuits"] if c["id"] == fdr_m.group(0).upper()), None)
+            if c:
+                return _reply(f"Circuit **{c['id']}** ({c['substation']}, {c['zone']}): predicted {fmt(c['pred'])} of {fmt(c['customers'])} customers out; "
+                              f"restoration about **{c['eta_h']:.0f} h {after}** (likely {c['low_h']:.0f}–{c['high_h']:.0f} h, {c['confidence']}% confidence).",
+                              actions=[_nav("Open prediction", f"{ev}?tab=prediction")],
+                              say=f"Circuit {c['id']} should be restored about {c['eta_h']:.0f} hours {after}.")
+        else:
+            key = (region_m.group(1) or region_m.group(2)).split()[0]
+            r = next((r for r in p.get("regions", []) if r["name"].lower().startswith(key)), None)
+            if r:
+                return _reply(f"**{r['name']} region** (predicted): {fmt(r['pred'])} customers out on {r['circuits']} circuits. Typical customer back about "
+                              f"**{r['eta_h']:.0f} h {after}** ({r['low_h']:.0f}–{r['high_h']:.0f} h); last circuit about {r['last_h']:.0f} h (up to {r['last_high_h']:.0f} h).",
+                              actions=[_nav("Open prediction", f"{ev}?tab=prediction")])
+
+    if live and (fdr_m or region_m):
+        net = ops.network_etrs(s, e)
+        if fdr_m:
+            fid = fdr_m.group(0).upper()
+            c = next((c for c in net["circuits"] if c["id"] == fid), None)
+            if not c:
+                return _reply(f"Circuit **{fid}** has no open outages.", say=f"Circuit {fid} has no open outages.")
+            return _reply(f"Circuit **{fid}** ({c['substation'] or 'substation n/a'}, {c['zone']}): {fmt(c['customers_out'])} customers out on "
+                          f"{c['open_tickets']} tickets, {c['crews']} crews. Estimated restoration: **{fmt_dt(c['etr_at'])}** ({c['confidence']}% confidence)"
+                          + (" — published to customers." if c["published"] else "."),
+                          actions=[_nav("Restoration board", "/restoration?level=circuit")],
+                          say=f"Circuit {fid} should be restored by {fmt_dt(c['etr_at'])}, {c['confidence']} percent confidence.")
+        key = (region_m.group(1) or region_m.group(2)).split()[0]
+        r = next((r for r in net["regions"] if r["name"].lower().startswith(key)), None)
+        if r:
+            cs = sorted((c for c in net["circuits"] if c["region_id"] == r["id"]), key=lambda c: -c["customers_out"])[:5]
+            if not cs:
+                return _reply(f"The **{r['name']}** region has no open outages.")
+            return _reply(f"**{r['name']} region** ({', '.join(r['zones'])}): {fmt(r['customers_out'])} customers out on {r['circuits_out']} circuits. "
+                          f"Last circuit expected **{fmt_dt(r['etr_at'])}** ({r['confidence']}% confidence); {r['circuits_ready']} circuits ready to publish.",
+                          [f"{c['id']} ({c['zone']}): {fmt(c['customers_out'])} out, ETR {fmt_t(c['etr_at'])}, {c['confidence']}%" for c in cs],
+                          [_nav("Restoration board", "/restoration?level=circuit")])
+
     if re.search(r"when|restor|etr|back on|power back|how long", q):
         if live:
             if zone:
@@ -133,10 +189,10 @@ def answer(s: Session, q_raw: str, e: StormEvent | None, weather: dict | None = 
         if p:
             zr = next((z for z in p["zones"] if zone and z["id"] == zone.id), None)
             if zr:
-                return _reply(f"**{zone.short}**: predicted {fmt(zr['pred'])} customers out ({pct(zr['pct'])}); restoration expected about **{zr['eta_h']} h after landfall**"
+                return _reply(f"**{zone.short}**: predicted {fmt(zr['pred'])} customers out ({pct(zr['pct'])}); restoration expected about **{zr['eta_h']} h {after}**"
                               + (f" (~{fmt_dt(_after(e, zr['eta_h']))})." if e.landfall_at else "."),
-                              say=f"{zone.short} would be restored about {zr['eta_h']} hours after landfall.")
-            return _reply(f"Predicted average restoration: **{p['avg_eta_h']:.0f} h** after landfall; 95% by **{p['p95_eta_h']} h**.",
+                              say=f"{zone.short} would be restored about {zr['eta_h']} hours {after}.")
+            return _reply(f"Predicted average restoration: **{p['avg_eta_h']:.0f} h** {after}; 95% by **{p['p95_eta_h']} h**.",
                           actions=[_nav("Open prediction", f"{ev}?tab=prediction")])
 
     if re.search(r"worst|hardest|most affected|which (area|zone|neighbo)", q):
@@ -162,6 +218,10 @@ def answer(s: Session, q_raw: str, e: StormEvent | None, weather: dict | None = 
         w = ""
         if weather and not weather.get("error"):
             w = f" Live conditions in Tampa ({weather['source']}): {round(weather['temp_f'])}°F, wind {round(weather['wind_mph'])} mph, gusts {round(weather['gust_mph'])} mph."
+        if rain:
+            onset = f" Rain starts {fmt_dt(e.landfall_at)}." if e.landfall_at else ""
+            return _reply(f"**{e.name}** — {e.kind}, {e.rain_total_in or 0:g} in forecast at up to {e.rain_rate_in_hr or 0:g} in/hr over ~{e.duration_h or 0:g} h, "
+                          f"soil {round((e.soil_saturation or 0) * 100)}% saturated.{onset}{w}", actions=[_nav("Open event", ev)])
         lf = f" Landfall {fmt_dt(e.landfall_at)}." if e.landfall_at else ""
         return _reply(f"**{e.name}** — {e.kind}, Cat {e.category}, {e.max_wind_mph} mph, {e.pressure_mb} mb, moving {e.movement or 'n/a'}.{lf}{w}",
                       actions=[_nav("Open event", ev)])

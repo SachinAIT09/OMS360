@@ -8,7 +8,7 @@ from sqlalchemy.orm import Session
 
 from .. import bus, serial, weather
 from ..auth import ROLES, current_user, hash_password, require
-from ..db import get_session, get_setting, set_setting
+from ..db import DEMO_ADMIN_EMAILS, get_session, get_setting, set_setting
 from ..models import (AuditLog, Crew, Message, MutualAidRequest, NotificationRule, Outage, StormEvent, User, Zone)
 from ..services import ops
 from ..services.recommendations import latest_prediction
@@ -93,7 +93,15 @@ def report_event(event_id: int, s: Session = Depends(get_session), _: User = Dep
         "channels": [{"channel": c, "messages": n, "recipients": int(r or 0)} for c, n, r in channels],
         "crews": [{"code": crews[cid].code, "company": crews[cid].company, "tickets": n} for cid, n in top_crews if cid in crews],
         "curve": ops.restoration_curve(s, e),
+        "etr_accuracy": ops.etr_accuracy(s, e),
     }
+
+
+@router.get("/reports/calibration", tags=["reports"])
+def report_calibration(event_id: int | None = None, s: Session = Depends(get_session), _: User = Depends(current_user)):
+    """Circuit ETR confidence: promised vs. actual share restored within ±2 h, by confidence band."""
+    from ..services import calibration
+    return calibration.report(s, event_id)
 
 
 # ---------------------------------------------------------------- users
@@ -142,6 +150,8 @@ def update_user(uid: int, body: UserPatch, s: Session = Depends(get_session), ad
         raise HTTPException(422, "Unknown role")
     if u.id == admin.id and (data.get("active") is False or data.get("role", "admin") != "admin"):
         raise HTTPException(409, "You can't deactivate or demote your own account.")
+    if u.email in DEMO_ADMIN_EMAILS and (data.get("active") is False or data.get("role", "admin") != "admin" or "password" in data):
+        raise HTTPException(409, "This is a protected demo account: it can't be deactivated, demoted or have its password changed.")
     if "password" in data:
         u.password_hash = hash_password(data.pop("password"))
     for k, v in data.items():
@@ -149,6 +159,41 @@ def update_user(uid: int, body: UserPatch, s: Session = Depends(get_session), ad
     bus.audit(s, admin.name, "user.updated", "user", u.id, f"{u.name}: " + ", ".join(data.keys() or ["password"]))
     s.commit()
     return serial.user(u)
+
+
+# ---------------------------------------------------------------- network (circuit routes)
+@router.get("/network/routes", tags=["network"])
+def network_routes(s: Session = Depends(get_session), _: User = Depends(current_user)):
+    """Every circuit's route for maps, and how many are sandbox-drawn vs imported from GIS."""
+    from ..services import network
+    return network.routes(s)
+
+
+@router.post("/admin/network/feeders", tags=["admin"])
+def import_feeder_routes(body: dict, s: Session = Depends(get_session), admin: User = Depends(require("admin"))):
+    """Import the utility's feeder lines: a GeoJSON FeatureCollection (WGS84) with a feeder ID property per feature."""
+    from ..services import network
+    try:
+        res = network.import_geojson(s, body)
+    except network.RouteError as ex:
+        raise HTTPException(422, str(ex))
+    bus.audit(s, admin.name, "network.imported", "network", "feeders",
+              f"GIS feeder routes imported: {res['matched']} matched, {res['unmatched']} not in OMS360")
+    s.commit()
+    return res
+
+
+@router.post("/admin/network/feeders/reset", tags=["admin"])
+def reset_feeder_routes(s: Session = Depends(get_session), admin: User = Depends(require("admin"))):
+    """Back to sandbox-drawn routes (e.g. after a test import)."""
+    from ..models import Feeder
+    from ..services import network
+    for f in s.scalars(select(Feeder)).all():
+        f.route, f.route_source = None, None
+    n = network.ensure_routes(s)
+    bus.audit(s, admin.name, "network.reset", "network", "feeders", f"Feeder routes reset to sandbox drawing ({n})")
+    s.commit()
+    return {"reset": n}
 
 
 # ---------------------------------------------------------------- zones

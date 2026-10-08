@@ -4,6 +4,7 @@ import { AreaChart, BarChart, DonutChart } from "@mantine/charts";
 import { useGet } from "../api/hooks";
 import type { Curve, StormEvent } from "../api/types";
 import { EventStatusBadge } from "../components/badges";
+import { CalibrationCard } from "../components/CalibrationCard";
 import { Loading, PageHeader, SectionTitle, Stat } from "../components/common";
 import { date, dtShort, fmt, label } from "../lib/format";
 
@@ -12,9 +13,11 @@ interface Summary {
   avg_restore_h: number | null; median_restore_h: number | null; customer_minutes: number; saidi_min: number; etr_mae_h: number | null;
   etr_within_2h_pct: number | null; mutual_aid_workers: number; messages_sent: number; message_recipients: number; crews_used: number;
 }
+interface EtrAcc { name: string; tickets: number; mae_h: number; within_2h_pct: number }
 interface Detail {
   summary: Summary; zones: { zone: string; tickets: number; customers: number; avg_restore_h: number | null }[]; causes: { cause: string; tickets: number }[];
   channels: { channel: string; messages: number; recipients: number }[]; crews: { code: string; company: string; tickets: number }[]; curve: Curve;
+  etr_accuracy: { regions: EtrAcc[]; circuits: (EtrAcc & { zone: string | null; region: string | null })[] };
 }
 const COLORS = ["red.6", "orange.6", "yellow.6", "blue.6", "cyan.6", "gray.6"];
 const CHANNEL_LABELS: Record<string, string> = { sms: "SMS", x: "X", ivr: "IVR" };
@@ -52,6 +55,7 @@ export default function ReportsPage() {
           </Table>
         </Table.ScrollContainer>
       </Card>
+      <CalibrationCard />
       {d && <>
         <Group justify="space-between" mb="sm"><Text fw={700} size="lg">{d.summary.event.name}</Text>
           <Select size="sm" w={260} value={id} onChange={setSel} data={rows.map(r => ({ value: String(r.event.id), label: r.event.name }))} /></Group>
@@ -95,6 +99,22 @@ export default function ReportsPage() {
               <Table mt="xs"><Table.Thead><Table.Tr><Table.Th>Zone</Table.Th><Table.Th ta="right">Tickets</Table.Th><Table.Th ta="right">Customers</Table.Th><Table.Th ta="right">Avg restore</Table.Th></Table.Tr></Table.Thead>
                 <Table.Tbody>{d.zones.map(z => <Table.Tr key={z.zone}><Table.Td>{z.zone}</Table.Td><Table.Td ta="right">{z.tickets}</Table.Td><Table.Td ta="right" className="tabular">{fmt(z.customers)}</Table.Td>
                   <Table.Td ta="right">{z.avg_restore_h != null ? `${z.avg_restore_h} h` : "—"}</Table.Td></Table.Tr>)}</Table.Tbody></Table>
+            </Card>
+          </Grid.Col>
+          <Grid.Col span={{ base: 12, lg: 6 }}>
+            <Card padding={0} h="100%">
+              <Text fw={600} p="md" pb={0}>ETR accuracy by region</Text>
+              <Table mt="xs"><Table.Thead><Table.Tr><Table.Th>Region</Table.Th><Table.Th ta="right">Tickets</Table.Th><Table.Th ta="right">Mean error</Table.Th><Table.Th ta="right">Within 2 h</Table.Th></Table.Tr></Table.Thead>
+                <Table.Tbody>{d.etr_accuracy.regions.map(r => <Table.Tr key={r.name}><Table.Td>{r.name}</Table.Td><Table.Td ta="right">{r.tickets}</Table.Td>
+                  <Table.Td ta="right">±{r.mae_h} h</Table.Td><Table.Td ta="right" fw={600}>{r.within_2h_pct}%</Table.Td></Table.Tr>)}</Table.Tbody></Table>
+            </Card>
+          </Grid.Col>
+          <Grid.Col span={{ base: 12, lg: 6 }}>
+            <Card padding={0} h="100%">
+              <Text fw={600} p="md" pb={0}>ETR accuracy by circuit <Text span size="xs" c="dimmed">(busiest 10)</Text></Text>
+              <Table mt="xs"><Table.Thead><Table.Tr><Table.Th>Circuit</Table.Th><Table.Th>Zone</Table.Th><Table.Th ta="right">Tickets</Table.Th><Table.Th ta="right">Mean error</Table.Th><Table.Th ta="right">Within 2 h</Table.Th></Table.Tr></Table.Thead>
+                <Table.Tbody>{d.etr_accuracy.circuits.slice(0, 10).map(c => <Table.Tr key={c.name}><Table.Td ff="monospace" fz="sm">{c.name}</Table.Td><Table.Td>{c.zone ?? "—"}</Table.Td>
+                  <Table.Td ta="right">{c.tickets}</Table.Td><Table.Td ta="right">±{c.mae_h} h</Table.Td><Table.Td ta="right" fw={600}>{c.within_2h_pct}%</Table.Td></Table.Tr>)}</Table.Tbody></Table>
             </Card>
           </Grid.Col>
           <Grid.Col span={{ base: 12, lg: 6 }}>

@@ -1,4 +1,5 @@
-import { Alert, Badge, Button, Card, Grid, Group, Progress, SimpleGrid, Switch, Table, Text, Tooltip } from "@mantine/core";
+import { useSearchParams } from "react-router-dom";
+import { Alert, Badge, Button, Card, Grid, Group, Progress, SegmentedControl, SimpleGrid, Switch, Table, Text, Tooltip } from "@mantine/core";
 import { AreaChart } from "@mantine/charts";
 import { modals } from "@mantine/modals";
 import { IconInfoCircle, IconWorldUpload } from "@tabler/icons-react";
@@ -8,8 +9,9 @@ import type { Curve, EventStats, StormEvent } from "../api/types";
 import { useAuth } from "../auth/AuthContext";
 import { useCurrentEvent } from "../auth/EventContext";
 import { Empty, Loading, PageHeader, SectionTitle, Stat } from "../components/common";
+import { CircuitEtrTable, CircuitMap, CircuitStats, RegionEtrTable } from "../components/NetworkEtrPanel";
 import { MapLegend, TerritoryMap } from "../components/TerritoryMap";
-import { dt, dtShort, fmt, pct, sevColor } from "../lib/format";
+import { dt, dtShort, fmt, impactWord, pct, sevColor } from "../lib/format";
 
 interface Resto { event: StormEvent; stats: EventStats; curve: Curve; prediction: { avg_eta_h: number; p95_eta_h: number; zones: Record<string, number> } | null; can_publish: boolean }
 
@@ -17,6 +19,10 @@ export default function RestorationPage() {
   const { event } = useCurrentEvent();
   const { can } = useAuth();
   const { data } = useGet<Resto>(event ? `/events/${event.id}/restoration` : null, { refetchInterval: 30_000 });
+  const [params, setParams] = useSearchParams();
+  const level = params.get("level") ?? "zone";
+  const region = params.get("region");
+  const setView = (l: string, r: string | null = null) => setParams(l === "zone" ? {} : r ? { level: l, region: r } : { level: l });
   const publishAll = useAction(() => api.post<{ published: number }>(`/events/${event!.id}/publish`, {}), { success: r => `ETRs published for ${r.published} zones — customers notified` });
   const toggle = useAction(({ zone, on }: { zone: string; on: boolean }) =>
     on ? api.post(`/events/${event!.id}/publish`, { zone_ids: [zone] }) : api.del(`/events/${event!.id}/publish/${zone}`), { success: "Website updated" });
@@ -33,11 +39,11 @@ export default function RestorationPage() {
         actions={can("etr.publish") && data.can_publish && <Button leftSection={<IconWorldUpload size={16} />} disabled={!unpublished}
           onClick={() => modals.openConfirmModal({ title: "Publish restoration times", children: <Text size="sm">Publish ETRs for {unpublished} zones to the public outage map and send ETR text messages to affected customers?</Text>,
             labels: { confirm: "Publish", cancel: "Cancel" }, onConfirm: () => publishAll.mutate() })}>Publish all ({unpublished})</Button>} />
-      {!data.can_publish && <Alert icon={<IconInfoCircle size={18} />} mb="md" color="gray">ETRs can be published while the event is Active or Restoring. {data.prediction && `Predicted restoration: average ${Math.round(data.prediction.avg_eta_h)} h, 95% within ${data.prediction.p95_eta_h} h of landfall.`}</Alert>}
+      {!data.can_publish && <Alert icon={<IconInfoCircle size={18} />} mb="md" color="gray">ETRs can be published while the event is Active or Restoring. {data.prediction && `Predicted restoration: average ${Math.round(data.prediction.avg_eta_h)} h, 95% within ${data.prediction.p95_eta_h} h of ${impactWord(data.event)}.`}</Alert>}
       <SimpleGrid cols={{ base: 2, md: 4 }} mb="lg">
         <Stat label="Customers out" value={fmt(st.customers_out)} color="red" hint={`${st.open_tickets} open tickets`} />
         <Stat label="Restored" value={pct(st.restored_pct)} color="teal" progress={st.restored_pct} hint={`${fmt(st.customers_affected - st.customers_out)} of ${fmt(st.customers_affected)}`} />
-        <Stat label="Last zone expected" value={st.last_etr_at ? dtShort(st.last_etr_at) : "—"} hint={data.prediction ? `model predicted ${data.prediction.p95_eta_h} h after landfall` : undefined} />
+        <Stat label="Last zone expected" value={st.last_etr_at ? dtShort(st.last_etr_at) : "—"} hint={data.prediction ? `model predicted ${data.prediction.p95_eta_h} h after ${impactWord(data.event)}` : undefined} />
         <Stat label="Published zones" value={`${st.published_zones} / ${active.length}`} color={unpublished ? "yellow" : "teal"} hint="visible on the public outage map" />
       </SimpleGrid>
       <Grid gutter="lg" mb="lg">
@@ -58,7 +64,14 @@ export default function RestorationPage() {
           </Card>
         </Grid.Col>
       </Grid>
-      <Card padding={0}>
+      <Group justify="space-between" mb="sm">
+        <SegmentedControl value={level} onChange={v => setView(v)}
+          data={[{ value: "region", label: "By region" }, { value: "zone", label: "By zone" }, { value: "circuit", label: "By circuit" }]} />
+        <Text size="xs" c="dimmed">Circuit ETRs let you give customers a tighter, high-confidence time for their own circuit.</Text>
+      </Group>
+      {level === "region" && <RegionEtrTable eventId={event.id} onPick={r => setView("circuit", r)} />}
+      {level === "circuit" && <><CircuitStats eventId={event.id} /><CircuitMap eventId={event.id} region={region} /><CircuitEtrTable eventId={event.id} region={region} onRegion={r => setView("circuit", r)} /></>}
+      {level === "zone" && <Card padding={0}>
         <Table.ScrollContainer minWidth={950}>
           <Table>
             <Table.Thead><Table.Tr>
@@ -85,8 +98,8 @@ export default function RestorationPage() {
             </Table.Tbody>
           </Table>
         </Table.ScrollContainer>
-        <Text size="xs" c="dimmed" p="sm">ETR = remaining work in the zone (job hours by damage type; storm surge ×2.3) ÷ crews working there plus a share of idle crews. Assigned tickets use their committed ETR. Recalculated whenever tickets or crews change.</Text>
-      </Card>
+        <Text size="xs" c="dimmed" p="sm">ETR = remaining work in the zone (job hours by damage type; storm surge ×2.3, flooding ×1.8) ÷ crews working there plus a share of idle crews. Assigned tickets use their committed ETR. Recalculated whenever tickets or crews change.</Text>
+      </Card>}
     </>
   );
 }
