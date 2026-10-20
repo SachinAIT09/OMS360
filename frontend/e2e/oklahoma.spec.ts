@@ -266,3 +266,22 @@ test("9. responsive layouts", async ({ page, request }) => {
 });
 
 
+
+test("10. mouse-wheel zoom works on every map", async ({ page, request }) => {
+  const token = await signIn(page, request);
+  const ev = await current(request, token);
+  const errors = watchErrors(page);
+  for (const path of ["/", "/network", "/asset-health", `/events/${ev.id}`, "/outages?view=map", "/crews"]) {
+    await page.goto(path);
+    const map = page.locator(".leaflet-container").first();
+    await expect(map).toHaveAttribute("data-zoom", /\d/);
+    await map.scrollIntoViewIfNeeded();
+    await page.waitForTimeout(600);  // let any zoom-to-selection settle
+    const before = Number(await map.getAttribute("data-zoom"));
+    const box = (await map.boundingBox())!;
+    await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
+    await page.mouse.wheel(0, -400);
+    await expect.poll(async () => Number(await map.getAttribute("data-zoom")), { message: `${path} wheel zoom` }).toBeGreaterThan(before);
+  }
+  expect(errors).toEqual([]);
+});

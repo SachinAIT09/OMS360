@@ -159,7 +159,7 @@ export default function NetworkExplorerPage() {
               <SegmentedControl size="xs" value={colorBy} onChange={v => setColorBy(v as typeof colorBy)}
                 data={[{ value: "health", label: "Colour: equipment health" }, { value: "storm", label: "Colour: storm impact" }]} />
             </Group>
-            <TerritoryMap height={wide ? 620 : 420} scrollZoom fit={fit} outline={on("outline") ? geo.data?.state?.rings : null} areas={areas}
+            <TerritoryMap height={wide ? 620 : 420} fit={fit} outline={on("outline") ? geo.data?.state?.rings : null} areas={areas}
               lines={lines} pins={[...subPins, ...outagePins]} track={on("storm") ? detail.data?.track : null}
               facilities={on("facilities") ? ref.data?.facilities.filter(f => !region || scopeIds.has(f.feeder_id)) : undefined}>
               {circuit && on("assets") && (markers.data ?? []).map(m => (

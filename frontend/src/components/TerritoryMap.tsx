@@ -1,6 +1,6 @@
 import { useEffect, useState, type ReactNode } from "react";
 import L from "leaflet";
-import { Circle, CircleMarker, MapContainer, Marker, Polygon, Polyline, Popup, TileLayer, Tooltip, useMap } from "react-leaflet";
+import { Circle, CircleMarker, MapContainer, Marker, Polygon, Polyline, Popup, TileLayer, Tooltip, useMap, useMapEvents } from "react-leaflet";
 import { useComputedColorScheme } from "@mantine/core";
 import { API_BASE } from "../api/client";
 import type { Facility, TrackPoint, Yard } from "../api/types";
@@ -39,18 +39,22 @@ function Basemap({ light }: { light: boolean }) {
 }
 
 export function TerritoryMap({ zones = [], pins = [], lines = [], facilities, yards, track, center = PROFILE.map_center, zoom = PROFILE.map_zoom, height = 420, labels = true,
-  light, radarLayer, outline, areas, children, asOf, fit, scrollZoom = false }: {
+  light, radarLayer, outline, areas, children, asOf, fit, scrollZoom = true }: {
   zones?: MapZone[]; pins?: MapPin[]; lines?: MapLine[]; facilities?: Facility[]; yards?: Yard[]; track?: TrackPoint[] | null; center?: [number, number]; zoom?: number;
   height?: number | string; labels?: boolean; light?: boolean; radarLayer?: string | null;
   /** state boundary rings */ outline?: [number, number][][] | null; areas?: MapArea[]; children?: ReactNode;
   /** the moment to draw a tornado's progress at (ms); defaults to now */ asOf?: number;
-  /** points to zoom to whenever they change (drill-down) */ fit?: [number, number][] | null; scrollZoom?: boolean;
+  /** points to zoom to whenever they change (drill-down) */ fit?: [number, number][] | null;
+  /** zoom with the mouse wheel / trackpad (on by default on every map) */ scrollZoom?: boolean;
 }) {
   const scheme = useComputedColorScheme("dark");
   const isLight = light ?? scheme === "light";
   return (
-    <MapContainer center={center} zoom={zoom} scrollWheelZoom={scrollZoom} preferCanvas style={{ height, width: "100%" }}>
+    // Smooth wheel zoom: quarter-level steps with a fine wheel response (mouse wheels and trackpads alike).
+    <MapContainer center={center} zoom={zoom} scrollWheelZoom={scrollZoom} zoomSnap={0.25} zoomDelta={0.5} wheelPxPerZoomLevel={100}
+      wheelDebounceTime={30} preferCanvas style={{ height, width: "100%" }}>
       <Basemap light={isLight} />
+      <ZoomAttr />
       {fit && fit.length > 0 && <FitTo points={fit} />}
       {radarLayer && <TileLayer url={`${API_BASE}/weather/tiles/${radarLayer}/{z}/{x}/{y}.png`} opacity={0.7} attribution="Weather © OpenWeather" />}
       {outline?.map((ring, i) => <Polygon key={`o${i}`} positions={ring} interactive={false}
@@ -91,6 +95,13 @@ export function TerritoryMap({ zones = [], pins = [], lines = [], facilities, ya
       {children}
     </MapContainer>
   );
+}
+
+/** Mirrors the zoom level onto the map element (data-zoom) so it can be read by tests and tooling. */
+function ZoomAttr() {
+  const map = useMapEvents({ zoomend: () => { map.getContainer().dataset.zoom = String(map.getZoom()); } });
+  useEffect(() => { map.getContainer().dataset.zoom = String(map.getZoom()); }, [map]);
+  return null;
 }
 
 /** Zoom to a set of points whenever it changes (padding keeps edge features visible). */
