@@ -55,7 +55,7 @@ function Body({ id }: { id: number }) {
         <Stack gap="xs">
           <Divider label="Dispatch" labelPosition="left" />
           <Group align="flex-end" gap="xs">
-            <Select style={{ flex: 1 }} label={o.crew ? `Assigned to ${o.crew.code} — reassign` : "Assign a crew"} placeholder="Choose an idle line crew" searchable
+            <Select className="flex-1" label={o.crew ? `Assigned to ${o.crew.code} — reassign` : "Assign a crew"} placeholder="Choose an idle line crew" searchable
               data={(crews.data ?? []).map(c => ({ value: String(c.id), label: `${c.code} · ${c.company} · ${c.size} workers (${c.status})` }))}
               value={crewId} onChange={setCrewId} disabled={!["reported", "assessed", "assigned"].includes(o.status)} nothingFoundMessage="No idle line crews" />
             <Button leftSection={<IconUserCheck size={16} />} disabled={!crewId} loading={assign.isPending} onClick={() => crewId && assign.mutate(Number(crewId))}>Assign</Button>
@@ -72,7 +72,7 @@ function Body({ id }: { id: number }) {
             <Grid.Col span={4}><Select label="Priority" data={["critical", "high", "normal"].map(c => ({ value: c, label: label(c) }))} value={o.priority} onChange={v => v && patch.mutate({ priority: v })} /></Grid.Col>
           </Grid>
           <Group align="flex-end" gap="xs">
-            <DateTimePicker style={{ flex: 1 }} label="Override ETR" placeholder="Pick date and time" value={etr} onChange={setEtr} minDate={new Date()} valueFormat="ddd MMM D, h:mm A" />
+            <DateTimePicker className="flex-1" label="Override ETR" placeholder="Pick date and time" value={etr} onChange={setEtr} minDate={new Date()} valueFormat="ddd MMM D, h:mm A" />
             <Button variant="default" leftSection={<IconClock size={16} />} disabled={!etr} onClick={() => setEtrA.mutate()}>Set ETR</Button>
           </Group>
         </Stack>
@@ -80,7 +80,7 @@ function Body({ id }: { id: number }) {
 
       <Divider label="Activity" labelPosition="left" />
       <Group align="flex-end" gap="xs">
-        <Textarea style={{ flex: 1 }} placeholder="Add a note for the field or dispatch…" autosize minRows={1} value={note} onChange={e => setNote(e.currentTarget.value)} />
+        <Textarea className="flex-1" placeholder="Add a note for the field or dispatch…" autosize minRows={1} value={note} onChange={e => setNote(e.currentTarget.value)} />
         <Button variant="default" disabled={!note.trim()} onClick={() => { addNote.mutate(); setNote(""); }}>Add note</Button>
       </Group>
       <Timeline bulletSize={18} lineWidth={2}>

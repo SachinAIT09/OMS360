@@ -37,7 +37,7 @@ export default function PublicOutageMap() {
     <Box bg="gray.0" mih="100vh">
       <Box bg="#0b3d91" c="white" py="md">
         <Container size="lg"><Group justify="space-between">
-          <Group gap="sm"><Box w={32} h={32} style={{ borderRadius: 8, background: "linear-gradient(135deg,#6f9dff,#3ec46d)" }} />
+          <Group gap="sm"><Box w={32} h={32} className="rounded-[8px] bg-[linear-gradient(135deg,#6f9dff,#3ec46d)]" />
             <div><Text fw={700} size="lg" lh={1.1}>{PROFILE.utility}</Text><Text size="xs" opacity={0.8}>Outage Center</Text></div></Group>
           <Group gap="lg" visibleFrom="sm"><Text size="sm">Outage map</Text><Text size="sm">Report an outage</Text><Text size="sm">Storm center</Text><Text size="sm">Alerts</Text></Group>
         </Group></Container>
@@ -50,14 +50,14 @@ export default function PublicOutageMap() {
               <Card withBorder radius="md" padding="lg">
                 <Title order={4} mb="sm">Check your address</Title>
                 <Group gap="xs" align="flex-end">
-                  <Autocomplete style={{ flex: 1 }} placeholder="Street address" data={data?.sample_addresses ?? []} value={addr} onChange={setAddr} onOptionSubmit={v => lookup(v)}
+                  <Autocomplete className="flex-1" placeholder="Street address" data={data?.sample_addresses ?? []} value={addr} onChange={setAddr} onOptionSubmit={v => lookup(v)}
                     onKeyDown={e => e.key === "Enter" && lookup()} leftSection={<IconSearch size={16} />} />
                   <Button color="#0b3d91" onClick={() => lookup()}>Check</Button>
                 </Group>
                 {err && <Text c="red" size="sm" mt="sm">{err}</Text>}
               </Card>
               {result && (
-                <Paper withBorder radius="md" p="lg" style={{ borderColor: "#b8c8f0" }}>
+                <Paper withBorder radius="md" p="lg" className="border-[#b8c8f0]">
                   <Text size="xs" c="dimmed">{result.address}</Text>
                   {result.status === "no_outage" && <Group mt={6} gap="xs"><IconCircleCheck color="green" /><Text fw={600}>No outage reported at this address</Text></Group>}
                   {result.status === "restored" && <Group mt={6} gap="xs"><IconCircleCheck color="green" /><Text fw={600} c="green.8">Power restored in {result.zone}</Text></Group>}

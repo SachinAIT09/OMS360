@@ -190,8 +190,21 @@ test("7. existing screens and workflows still work", async ({ page, request, bro
   }
   await expect(page.getByText("How the health score works")).toBeVisible();
 
-  // a what-if scenario on the prediction
+  // a partial forecast (7 zones): the card lists those and folds the defaulted zones away until asked
+  const fcInfo = await api<{ sample_csv: string }>(request, token, `/events/${ev.id}/forecasts`);
+  const posted = await request.post(`/api/events/${ev.id}/forecasts`, { headers: { Authorization: `Bearer ${token}` },
+    data: { csv: fcInfo.sample_csv, source: "Parent-company storm model" } });
+  expect(posted.ok()).toBeTruthy();
   await page.goto(`/events/${ev.id}?tab=prediction`);
+  await expect(page.getByText(/7 of \d+ zones in forecast/)).toBeVisible();
+  await expect(page.getByText(/use the event-wide default/)).toBeVisible();
+  await expect(page.getByText("(default)")).toHaveCount(0);
+  await expect(page.getByRole("columnheader", { name: "Arrival" })).toHaveCount(0);  // the sample has no arrival times
+  await page.getByText("Forecast input").scrollIntoViewIfNeeded();
+  await page.screenshot({ path: "e2e-screens/forecast-card.png" });
+  await page.getByRole("button", { name: "Show them" }).click();
+  await expect(page.getByText("(default)").first()).toBeVisible();
+  await page.getByRole("button", { name: "Hide them" }).click();
   await page.getByText("EF5", { exact: true }).click();
   await page.getByRole("button", { name: "Try scenario" }).click();
   await expect(page.getByText(/Showing an unsaved scenario: EF5/)).toBeVisible();
@@ -284,4 +297,46 @@ test("10. mouse-wheel zoom works on every map", async ({ page, request }) => {
     await expect.poll(async () => Number(await map.getAttribute("data-zoom")), { message: `${path} wheel zoom` }).toBeGreaterThan(before);
   }
   expect(errors).toEqual([]);
+});
+
+test("11. replacement-budget slider marks do not overlap", async ({ page, request }) => {
+  await signIn(page, request);
+  for (const width of [1440, 820]) {
+    await page.setViewportSize({ width, height: 900 });
+    await page.goto("/asset-health?tab=plan");
+    const labels = ["$1M", "$5M", "$20M", "$50M", "$200M"];
+    const boxes = [];
+    for (const l of labels) boxes.push((await page.getByText(l, { exact: true }).first().boundingBox())!);
+    for (let i = 1; i < boxes.length; i++) expect(boxes[i].x, `${labels[i - 1]} / ${labels[i]} at ${width}px`).toBeGreaterThan(boxes[i - 1].x + boxes[i - 1].width);
+    const note = (await page.getByText(/Units are ranked by customer risk removed per dollar/).boundingBox())!;
+    expect(note.y, "note sits below the mark labels").toBeGreaterThan(Math.max(...boxes.map(b => b.y + b.height)));
+    await page.screenshot({ path: `e2e-screens/plan-slider-${width}.png` });
+  }
+  // keyboard: arrow keys step between rounded budgets (one raw track step would round back to the same value)
+  const budget = page.getByText(/^Replacement budget:/);
+  await expect(budget).toContainText("$20.0M");
+  await page.getByRole("slider", { name: "Replacement budget" }).focus();
+  await page.keyboard.press("ArrowRight");
+  await expect(budget).toContainText("$21.0M");
+  await page.keyboard.press("ArrowLeft");
+  await page.keyboard.press("ArrowLeft");
+  await expect(budget).toContainText("$19.0M");
+  await page.keyboard.press("End");
+  await expect(budget).toContainText("$200.0M");
+});
+
+test("12. shared Tailwind styles apply (tabular figures, chevron rotation)", async ({ page, request }) => {
+  await signIn(page, request);
+  await page.goto("/asset-health");
+  const num = page.locator(".tabular-nums").first();
+  await expect(num).toBeVisible();
+  expect(await num.evaluate(el => getComputedStyle(el).fontVariantNumeric)).toContain("tabular-nums");
+  await page.goto("/");
+  const why = page.getByText("Why this recommendation?").first();
+  await expect(why).toBeVisible();
+  const chevron = why.locator("xpath=following-sibling::*[1]");
+  const transform = () => chevron.evaluate(el => getComputedStyle(el).transform);
+  expect(await transform()).toBe("none");
+  await why.click();
+  await expect.poll(transform).not.toBe("none");
 });

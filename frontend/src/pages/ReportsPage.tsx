@@ -40,12 +40,12 @@ export default function ReportsPage() {
             <Table.Thead><Table.Tr><Table.Th>Event</Table.Th><Table.Th>Status</Table.Th><Table.Th ta="right">Customers affected</Table.Th><Table.Th ta="right">Predicted</Table.Th>
               <Table.Th ta="right">Tickets</Table.Th><Table.Th ta="right">Avg restore</Table.Th><Table.Th ta="right">SAIDI (min)</Table.Th><Table.Th ta="right">ETR error</Table.Th><Table.Th ta="right">Mutual aid</Table.Th></Table.Tr></Table.Thead>
             <Table.Tbody>{rows.map(r => (
-              <Table.Tr key={r.event.id} className="row-click" onClick={() => setSel(String(r.event.id))} bg={String(r.event.id) === id ? "var(--mantine-color-default-hover)" : undefined}>
+              <Table.Tr key={r.event.id} className="cursor-pointer" onClick={() => setSel(String(r.event.id))} bg={String(r.event.id) === id ? "var(--mantine-color-default-hover)" : undefined}>
                 <Table.Td><Text size="sm" fw={600}>{r.event.name}</Text><Text size="xs" c="dimmed">{date(r.event.landfall_at ?? r.event.created_at)}</Text></Table.Td>
                 <Table.Td><EventStatusBadge status={r.event.status} size="sm" /></Table.Td>
-                <Table.Td ta="right" className="tabular">{fmt(r.customers_affected)}</Table.Td>
-                <Table.Td ta="right" className="tabular">{fmt(r.predicted)}{r.prediction_error_pct != null && <Text span size="xs" c="dimmed"> ({r.prediction_error_pct > 0 ? "+" : ""}{r.prediction_error_pct}%)</Text>}</Table.Td>
-                <Table.Td ta="right" className="tabular">{fmt(r.tickets)}</Table.Td>
+                <Table.Td ta="right" className="tabular-nums">{fmt(r.customers_affected)}</Table.Td>
+                <Table.Td ta="right" className="tabular-nums">{fmt(r.predicted)}{r.prediction_error_pct != null && <Text span size="xs" c="dimmed"> ({r.prediction_error_pct > 0 ? "+" : ""}{r.prediction_error_pct}%)</Text>}</Table.Td>
+                <Table.Td ta="right" className="tabular-nums">{fmt(r.tickets)}</Table.Td>
                 <Table.Td ta="right">{r.avg_restore_h != null ? `${r.avg_restore_h} h` : "—"}</Table.Td>
                 <Table.Td ta="right">{r.saidi_min || "—"}</Table.Td>
                 <Table.Td ta="right">{r.etr_mae_h != null ? `±${r.etr_mae_h} h` : "—"}</Table.Td>
@@ -81,7 +81,7 @@ export default function ReportsPage() {
                 <Stack gap={6} mt="md">{causes.map(c => (
                   <Group key={c.name} justify="space-between" wrap="nowrap">
                     <Group gap="xs" wrap="nowrap"><ColorSwatch color={`var(--mantine-color-${c.color.replace(".", "-")})`} size={10} withShadow={false} /><Text size="sm">{c.name}</Text></Group>
-                    <Text size="sm" className="tabular">{c.value} <Text span size="xs" c="dimmed">({causeTotal ? Math.round(c.value / causeTotal * 100) : 0}%)</Text></Text>
+                    <Text size="sm" className="tabular-nums">{c.value} <Text span size="xs" c="dimmed">({causeTotal ? Math.round(c.value / causeTotal * 100) : 0}%)</Text></Text>
                   </Group>))}
                 </Stack>
               </> : <Text c="dimmed">No causes recorded.</Text>}
@@ -97,7 +97,7 @@ export default function ReportsPage() {
             <Card padding={0} h="100%">
               <Text fw={600} p="md" pb={0}>Restoration time by zone</Text>
               <Table mt="xs"><Table.Thead><Table.Tr><Table.Th>Zone</Table.Th><Table.Th ta="right">Tickets</Table.Th><Table.Th ta="right">Customers</Table.Th><Table.Th ta="right">Avg restore</Table.Th></Table.Tr></Table.Thead>
-                <Table.Tbody>{d.zones.map(z => <Table.Tr key={z.zone}><Table.Td>{z.zone}</Table.Td><Table.Td ta="right">{z.tickets}</Table.Td><Table.Td ta="right" className="tabular">{fmt(z.customers)}</Table.Td>
+                <Table.Tbody>{d.zones.map(z => <Table.Tr key={z.zone}><Table.Td>{z.zone}</Table.Td><Table.Td ta="right">{z.tickets}</Table.Td><Table.Td ta="right" className="tabular-nums">{fmt(z.customers)}</Table.Td>
                   <Table.Td ta="right">{z.avg_restore_h != null ? `${z.avg_restore_h} h` : "—"}</Table.Td></Table.Tr>)}</Table.Tbody></Table>
             </Card>
           </Grid.Col>
@@ -121,7 +121,7 @@ export default function ReportsPage() {
             <Card padding={0} h="100%">
               <Text fw={600} p="md" pb={0}>Communications by channel</Text>
               <Table mt="xs"><Table.Tbody>{d.channels.map(c => <Table.Tr key={c.channel}><Table.Td>{channelLabel(c.channel)}</Table.Td><Table.Td ta="right">{c.messages} {c.messages === 1 ? "message" : "messages"}</Table.Td>
-                <Table.Td ta="right" className="tabular">{fmt(c.recipients)} recipients</Table.Td></Table.Tr>)}</Table.Tbody></Table>
+                <Table.Td ta="right" className="tabular-nums">{fmt(c.recipients)} recipients</Table.Td></Table.Tr>)}</Table.Tbody></Table>
             </Card>
           </Grid.Col>
           <Grid.Col span={{ base: 12, lg: 6 }}>

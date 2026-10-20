@@ -16,9 +16,6 @@ export function metres(a: [number, number], b: [number, number]): number {
   return Math.hypot((b[1] - a[1]) * kx, (b[0] - a[0]) * 110570);
 }
 
-/** All the points of a list of polylines (for zooming to them). */
-export const flatten = (lines: [number, number][][][]): [number, number][] => lines.flat(2 as 1) as unknown as [number, number][];
-
 /** The time range a tornado track spans ([first, last] in ms), or null. */
 export function trackSpan(track: { at: string }[] | null | undefined): [number, number] | null {
   if (!track?.length) return null;

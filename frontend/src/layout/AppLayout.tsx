@@ -84,10 +84,10 @@ function Shell() {
           <Burger opened={opened} onClick={toggle} hiddenFrom="sm" size="sm" />
           <Brand />
           <EventSwitcher />
-          <Box style={{ flex: 1 }} />
+          <Box className="flex-1" />
           <SearchButton />
           <Tooltip label="Network, customers, equipment records and storm scenarios are synthetic demonstration data — not utility operational data or official forecasts."
-            multiline w={320}><Badge variant="light" color="yellow" visibleFrom="sm" style={{ textTransform: "none" }}>Simulation data</Badge></Tooltip>
+            multiline w={320}><Badge variant="light" color="yellow" visibleFrom="sm" className="normal-case">Simulation data</Badge></Tooltip>
           <WeatherChip />
           <Bell />
           <ThemeToggle />
@@ -106,7 +106,7 @@ function Shell() {
               <NavGroupTitle>{g.group}</NavGroupTitle>
               {g.items.map(it => (
                 <NavLink key={it.to} component={RouterLink} to={it.to} label={it.label} leftSection={<it.icon size={18} stroke={1.6} />}
-                  active={it.to === "/" ? loc.pathname === "/" : loc.pathname.startsWith(it.to)} onClick={close} style={{ borderRadius: 8 }} />
+                  active={it.to === "/" ? loc.pathname === "/" : loc.pathname.startsWith(it.to)} onClick={close} className="rounded-[8px]" />
               ))}
             </Box>
           ))}
@@ -114,7 +114,7 @@ function Shell() {
         <AppShell.Section>
           <Divider mb="sm" />
           <NavLink component="a" href="/outage-map" target="_blank" label="Public outage map" description={PROFILE.site}
-            leftSection={<IconExternalLink size={18} stroke={1.6} />} style={{ borderRadius: 8 }} />
+            leftSection={<IconExternalLink size={18} stroke={1.6} />} className="rounded-[8px]" />
           <Text size="xs" c="dimmed" px={14} mt="xs" truncate className="app-nav-fade">{PROFILE.utility} · {user?.role_label}</Text>
         </AppShell.Section>
       </AppShell.Navbar>
@@ -128,14 +128,14 @@ function Shell() {
 
 /** Same height in both states: the text fades out on the rail and a short rule fades in, so nothing below it moves. */
 function NavGroupTitle({ children }: { children: string }) {
-  return <Text size="xs" fw={600} c="dimmed" tt="uppercase" px={14} mb={4} className="app-nav-group" style={{ letterSpacing: ".08em" }}><span>{children}</span></Text>;
+  return <Text size="xs" fw={600} c="dimmed" tt="uppercase" px={14} mb={4} className="app-nav-group tracking-caps"><span>{children}</span></Text>;
 }
 
 function Brand() {
   return (
-    <UnstyledButton component={RouterLink} to="/" visibleFrom="sm" style={{ width: 216 }}>
+    <UnstyledButton component={RouterLink} to="/" visibleFrom="sm" className="w-[216px]">
       <Group gap={10} wrap="nowrap">
-        <Box bg="white" p={4} style={{ borderRadius: 6, lineHeight: 0 }}>
+        <Box bg="white" p={4} className="rounded-[6px] leading-[0]">
           <Image src={LOGO} h={22} w="auto" fit="contain" alt="PowerConnect" fallbackSrc="data:image/gif;base64,R0lGODlhAQABAAAAACw=" />
         </Box>
         <Text fw={700} size="lg">OMS<Text span c="brand.4" inherit>360</Text></Text>
@@ -189,7 +189,7 @@ function WeatherChip() {
   if (!data || data.error) return null;
   return (
     <Tooltip label={`Live weather · ${PROFILE.weather_label} · ${data.source}`}>
-      <Badge variant="outline" color="teal" size="lg" leftSection={<span className="pulse-dot" />} visibleFrom="lg" style={{ textTransform: "none" }}>
+      <Badge variant="outline" color="teal" size="lg" leftSection={<span className="pulse-dot" />} visibleFrom="lg" className="normal-case">
         {PROFILE.weather_label} {Math.round(data.temp_f)}°F · {Math.round(data.wind_mph)} mph
       </Badge>
     </Tooltip>

@@ -1,0 +1,5 @@
+/* Mantine provides the CSS reset (Tailwind's preflight is disabled). `base` is still needed: with preflight off it emits only the
+   default --tw-* variables that utilities such as tabular-nums and rotate-180 are built from. */
+@tailwind base;
+@tailwind components;
+@tailwind utilities;

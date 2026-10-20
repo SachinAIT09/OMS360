@@ -4,9 +4,11 @@ import { Circle, CircleMarker, MapContainer, Marker, Polygon, Polyline, Popup, T
 import { useComputedColorScheme } from "@mantine/core";
 import { API_BASE } from "../api/client";
 import type { Facility, TrackPoint, Yard } from "../api/types";
-import { dt, FAC_COLOR, fmt, pct, sevColor } from "../lib/format";
+import { dt, FAC_COLOR, fmt, sevColor } from "../lib/format";
 import { corridor } from "../lib/geo";
 import { PROFILE } from "../lib/profile";
+import { EF, MARK, SEV } from "../lib/colors";
+import { Swatch } from "./ui";
 
 export interface MapZone { id: string; short: string; lat: number; lng: number; customers: number; value: number; popup?: ReactNode; restored?: boolean }
 export interface MapPin { id: number | string; lat: number; lng: number; color: string; popup?: ReactNode; onClick?: () => void }
@@ -19,11 +21,11 @@ export interface MapLine {
 export interface MapArea { id: string; name: string; ring: [number, number][]; color: string; selected?: boolean; dimmed?: boolean; onClick?: () => void; label?: ReactNode }
 
 const facIcon = (k: string) => L.divIcon({ className: "", html: `<div class="mk" style="background:${FAC_COLOR[k]}">${k}</div>`, iconSize: [18, 18], iconAnchor: [9, 9] });
-const yardIcon = L.divIcon({ className: "", html: `<div class="mk round" style="background:#2b6bff">Y</div>`, iconSize: [18, 18], iconAnchor: [9, 9] });
+const yardIcon = L.divIcon({ className: "", html: `<div class="mk round" style="background:${MARK.yard}">Y</div>`, iconSize: [18, 18], iconAnchor: [9, 9] });
 const stormIcon = L.divIcon({ className: "", html: '<div class="hurr">🌀</div>', iconSize: [28, 28], iconAnchor: [14, 14] });
 const tornadoIcon = L.divIcon({ className: "", html: '<div class="twister">🌪️</div>', iconSize: [28, 28], iconAnchor: [14, 14] });
 /** Enhanced Fujita colour scale for damage paths. */
-export const EF_COLOR = ["#8fd16a", "#f5d33b", "#f5a623", "#f07a2e", "#e0506a", "#b04fd8"];
+export const EF_COLOR: readonly string[] = EF;
 const pinIcon = (c: string) => L.divIcon({ className: "", html: `<div class="pin" style="background:${c}"></div>`, iconSize: [12, 12], iconAnchor: [6, 6] });
 
 /** Esri canvas basemaps (no API key) with an OpenStreetMap fallback; follows the colour scheme. */
@@ -65,7 +67,7 @@ export function TerritoryMap({ zones = [], pins = [], lines = [], facilities, ya
           <Tooltip sticky>{a.label ?? a.name}</Tooltip>
         </Polygon>))}
       {zones.map(z => {
-        const col = z.restored ? "#3ec46d" : sevColor(z.value);
+        const col = z.restored ? SEV.ok : sevColor(z.value);
         return (
           <Circle key={z.id} center={[z.lat, z.lng]} radius={Math.sqrt(z.customers) * 15} pathOptions={{ color: col, weight: 1.5, fillColor: col, fillOpacity: 0.3 }}>
             {z.popup && <Popup>{z.popup}</Popup>}
@@ -165,17 +167,12 @@ function TornadoPaths({ track, asOf }: { track: TrackPoint[]; asOf?: number }) {
 }
 
 export function MapLegend({ mode = "out" }: { mode?: "out" | "pred" }) {
-  const items: [string, string][] = [["#3ec46d", "< 8%"], ["#f5a623", "8–20%"], ["#f07a2e", "20–40%"], ["#e0506a", "> 40%"]];
+  const items: [string, string][] = [[SEV.ok, "< 8%"], [SEV.watch, "8–20%"], [SEV.high, "20–40%"], [SEV.crit, "> 40%"]];
   return (
-    <div style={{ display: "flex", gap: 12, flexWrap: "wrap", fontSize: 11, opacity: 0.85, marginTop: 8 }}>
+    <div className="mt-2 flex flex-wrap items-center gap-3 text-[11px] opacity-85">
       <span>{mode === "pred" ? "Predicted outage probability" : "Customers out"}:</span>
-      {items.map(([c, l]) => <span key={l} style={{ display: "flex", alignItems: "center", gap: 4 }}><i style={{ width: 9, height: 9, borderRadius: 2, background: c, display: "inline-block" }} />{l}</span>)}
-      <span>· <b style={{ color: FAC_COLOR.H }}>H</b> hospital <b style={{ color: FAC_COLOR.W }}>W</b> water <b style={{ color: FAC_COLOR.S }}>S</b> shelter · <b style={{ color: "#2b6bff" }}>Y</b> staging yard</span>
+      {items.map(([c, l]) => <span key={l} className="inline-flex items-center gap-1"><Swatch color={c} />{l}</span>)}
+      <span>· <b style={{ color: FAC_COLOR.H }}>H</b> hospital <b style={{ color: FAC_COLOR.W }}>W</b> water <b style={{ color: FAC_COLOR.S }}>S</b> shelter · <b className="text-mark-yard">Y</b> staging yard</span>
     </div>
   );
 }
-
-export const zonePopup = (name: string, rows: [string, ReactNode][]) => (
-  <div><b>{name}</b>{rows.map(([k, v]) => <div key={k}>{k}: <b>{v}</b></div>)}</div>
-);
-export { pct, fmt };

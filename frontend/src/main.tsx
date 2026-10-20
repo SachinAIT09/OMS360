@@ -11,6 +11,7 @@ import "@mantine/dates/styles.css";
 import "@mantine/charts/styles.css";
 import "@mantine/spotlight/styles.css";
 import "leaflet/dist/leaflet.css";
+import "./tailwind.css";
 import "./app.css";
 import { theme } from "./theme";
 import { AuthProvider } from "./auth/AuthContext";

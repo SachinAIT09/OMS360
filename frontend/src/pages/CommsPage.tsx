@@ -76,7 +76,7 @@ export default function CommsPage() {
             {!all.data ? <Loading /> : !list.length ? <Empty title={`No ${TABS.find(t => t[0] === tab)?.[1].toLowerCase()} messages`} /> : (
               <Stack gap={0}>
                 {list.map(m => (
-                  <Paper key={m.id} p="md" radius={0} style={{ borderBottom: "1px solid var(--mantine-color-default-border)" }}>
+                  <Paper key={m.id} p="md" radius={0} className="border-0 border-b border-solid border-line">
                     <Group justify="space-between" wrap="nowrap" align="flex-start">
                       <Group gap="xs" wrap="nowrap">
                         <ActionIcon variant="light" size="lg" radius="md">{CH_ICON[m.channel]}</ActionIcon>
@@ -102,7 +102,7 @@ export default function CommsPage() {
                       </Group>
                     </Group>
                     {m.subject && <Text size="sm" fw={600} mt="sm">{m.subject}</Text>}
-                    <Text size="sm" mt={m.subject ? 2 : "sm"} className="pre-wrap" lineClamp={6}>{m.body}</Text>
+                    <Text size="sm" mt={m.subject ? 2 : "sm"} className="whitespace-pre-wrap" lineClamp={6}>{m.body}</Text>
                     {m.status === "rejected" && m.reject_reason && <Text size="xs" c="red" mt={6}>Sent back: {m.reject_reason}</Text>}
                   </Paper>))}
               </Stack>
@@ -124,7 +124,7 @@ export default function CommsPage() {
             <Card padding={0}>
               <Text fw={600} p="md" pb={0}>Audiences</Text>
               <Table mt="xs"><Table.Tbody>{(audiences.data ?? []).slice(0, 5).map(a => (
-                <Table.Tr key={a.id}><Table.Td>{a.name}</Table.Td><Table.Td ta="right" className="tabular">{fmt(a.count)}</Table.Td></Table.Tr>))}</Table.Tbody></Table>
+                <Table.Tr key={a.id}><Table.Td>{a.name}</Table.Td><Table.Td ta="right" className="tabular-nums">{fmt(a.count)}</Table.Td></Table.Tr>))}</Table.Tbody></Table>
               <Text size="xs" c="dimmed" p="sm">Zone, region and circuit audiences are also available when composing.</Text>
             </Card>
           </Stack>
@@ -165,7 +165,7 @@ function Compose({ eventId, message, audiences, onClose }: { eventId: number; me
                 data={audiences.map(a => ({ value: a.id, label: `${a.name} (${fmt(a.count)})` }))} />
             </Group>
             <Group align="flex-end" gap="xs">
-              <Select style={{ flex: 1 }} label="Purpose" placeholder="Based on event status" clearable value={purpose} onChange={setPurpose}
+              <Select className="flex-1" label="Purpose" placeholder="Based on event status" clearable value={purpose} onChange={setPurpose}
                 data={Object.entries(ref.data?.purposes ?? {}).map(([value, label]) => ({ value, label }))} />
               <Button variant="light" color="ai" leftSection={<IconSparkles size={16} />} loading={draft.isPending}
                 onClick={async () => { const d = await draft.mutateAsync(); setBody(d.body); setSubject(d.subject); setAi(true); }}>Draft with AI</Button>
@@ -181,7 +181,7 @@ function Compose({ eventId, message, audiences, onClose }: { eventId: number; me
           <Paper withBorder p="md" radius="lg" bg={channel === "sms" ? "var(--mantine-color-default-hover)" : undefined}>
             <Group gap={6} mb="xs">{CH_ICON[channel]}<Text size="xs" c="dimmed">{ref.data?.channels[channel]} · {PROFILE.utility}</Text></Group>
             {subject && <Text fw={600} size="sm">{subject}</Text>}
-            <Text size="sm" className="pre-wrap">{body || <Text span c="dimmed">Your message will appear here.</Text>}</Text>
+            <Text size="sm" className="whitespace-pre-wrap">{body || <Text span c="dimmed">Your message will appear here.</Text>}</Text>
           </Paper>
           <Text size="xs" c="dimmed" mt="sm">Estimated reach: <b>{fmt(aud ? (channel === "x" ? 48200 : channel === "facebook" ? 61500 : channel === "sms" ? aud.count * 0.71 : channel === "email" ? aud.count * 0.54 : 0) : 0)}</b>
             {["ivr", "website"].includes(channel) && " (on demand)"}</Text>

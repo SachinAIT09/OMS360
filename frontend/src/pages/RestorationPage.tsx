@@ -81,10 +81,10 @@ export default function RestorationPage() {
             <Table.Tbody>{zones.map(z => (
               <Table.Tr key={z.id}>
                 <Table.Td><Text size="sm" fw={500}>{z.name}</Text><Group gap={4}>{z.coastal && <Badge size="xs" variant="outline">surge</Badge>}{z.critical && <Badge size="xs" color="red" variant="outline">hospital</Badge>}{z.medical && <Badge size="xs" color="ai" variant="outline">medical</Badge>}</Group></Table.Td>
-                <Table.Td ta="right" className="tabular" fw={600} c={z.customers_out ? sevColor(z.pct_out) : "teal"}>{fmt(z.customers_out)}</Table.Td>
+                <Table.Td ta="right" className="tabular-nums" fw={600} c={z.customers_out ? sevColor(z.pct_out) : "teal"}>{fmt(z.customers_out)}</Table.Td>
                 <Table.Td><Progress value={z.pct_out * 200} color={sevColor(z.pct_out)} size="sm" /></Table.Td>
-                <Table.Td ta="right" className="tabular">{z.open_tickets}</Table.Td>
-                <Table.Td ta="right" className="tabular">{z.crews}</Table.Td>
+                <Table.Td ta="right" className="tabular-nums">{z.open_tickets}</Table.Td>
+                <Table.Td ta="right" className="tabular-nums">{z.crews}</Table.Td>
                 <Table.Td>{z.etr_at ? <Text size="sm" fw={600}>{dt(z.etr_at)}</Text> : z.affected ? <Badge color="teal">Restored</Badge> : <Text size="sm" c="dimmed">No outages</Text>}</Table.Td>
                 <Table.Td ta="right">{z.confidence != null ? `${z.confidence}%` : "—"}</Table.Td>
                 <Table.Td>

@@ -94,9 +94,9 @@ export default function JarvisPage() {
         </Group>
       </Group>
 
-      <Group align="stretch" gap="md" wrap="nowrap" style={{ flex: 1, minHeight: 0 }}>
-        <Stack gap="md" style={{ flex: 1, minWidth: 0 }}>
-          <ScrollArea viewportRef={scroller} style={{ flex: 1 }} type="auto" offsetScrollbars>
+      <Group align="stretch" gap="md" wrap="nowrap" className="min-h-0 flex-1">
+        <Stack gap="md" className="min-w-0 flex-1">
+          <ScrollArea viewportRef={scroller} className="flex-1" type="auto" offsetScrollbars>
             <Box className="assistant-column">
               {isLoading ? <Group justify="center" mt="xl"><Loader color="ai" type="dots" /></Group>
                 : empty ? <Hero talking={talking} onAsk={ask} />
@@ -105,7 +105,7 @@ export default function JarvisPage() {
                       ? <Paper key={m.id ?? `p${i}`} className="assistant-user" px="md" py="xs" radius="xl"><Text size="sm">{m.text}</Text></Paper>
                       : <Group key={m.id ?? `p${i}`} align="flex-start" gap="sm" wrap="nowrap">
                           <AssistantAvatar />
-                          <Box style={{ flex: 1, minWidth: 0 }}>
+                          <Box className="min-w-0 flex-1">
                             <AnswerBody m={m} onAction={act} />
                             {!!m.id && <Group gap={2} mt={6} className="assistant-tools">
                               <CopyButton value={[m.text, ...(m.bullets ?? []).map(b => `• ${b}`), m.quote ?? ""].filter(Boolean).join("\n").replace(/\*\*/g, "")}>
@@ -124,9 +124,9 @@ export default function JarvisPage() {
             </Box>
           </ScrollArea>
 
-          <Box className="assistant-column" style={{ flex: "none" }}>
+          <Box className="assistant-column flex-none">
             <div className="assistant-composer">
-              <Textarea variant="unstyled" autosize minRows={1} maxRows={5} placeholder="Type your message" value={input} style={{ flex: 1 }}
+              <Textarea variant="unstyled" autosize minRows={1} maxRows={5} placeholder="Type your message" value={input} className="flex-1"
                 onChange={e => setInput(e.currentTarget.value)} aria-label="Message the AI Assistant"
                 onKeyDown={e => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); ask(input); } }} />
               <Tooltip label={listening ? "Listening…" : "Talk (Chrome / Edge)"}>
@@ -228,7 +228,7 @@ function HistoryPanel({ current, onOpen, onDeleted, onViewSaved }: { current: Co
       </PanelHeader>
       {searching && <TextInput mx="md" mb="xs" size="xs" autoFocus placeholder="Search conversations" value={q} onChange={e => setQ(e.currentTarget.value)}
         rightSection={q ? <CloseButton size="sm" onClick={() => setQ("")} aria-label="Clear search" /> : null} />}
-      <ScrollArea style={{ flex: 1 }} type="auto" px="md" pb="md">
+      <ScrollArea className="flex-1" type="auto" px="md" pb="md">
         {!!savedRows.length && <>
           <UnstyledButton className="assistant-section" onClick={() => setSavedOpen(o => !o)} aria-expanded={savedOpen}>
             <IconChevronDown size={15} className={savedOpen ? undefined : "assistant-chevron-closed"} /><Text size="sm" fw={600}>Saved answers</Text>
@@ -236,7 +236,7 @@ function HistoryPanel({ current, onOpen, onDeleted, onViewSaved }: { current: Co
           {savedOpen && <Stack gap={6} mb={4}>
             {savedRows.slice(0, 5).map(m => (
               <UnstyledButton key={m.id} className="assistant-item" onClick={() => onOpen(m.conversation_id)}>
-                <IconBookmarkFilled size={13} color="var(--mantine-color-ai-4)" style={{ flex: "none" }} /><Text size="sm" truncate>{m.question ?? m.text.replace(/\*\*/g, "")}</Text>
+                <IconBookmarkFilled size={13} color="var(--mantine-color-ai-4)" className="flex-none" /><Text size="sm" truncate>{m.question ?? m.text.replace(/\*\*/g, "")}</Text>
               </UnstyledButton>))}
             {savedRows.length > 5 && <Button variant="subtle" size="compact-xs" ml="auto" onClick={onViewSaved}>View all {savedRows.length}</Button>}
           </Stack>}
@@ -250,7 +250,7 @@ function HistoryPanel({ current, onOpen, onDeleted, onViewSaved }: { current: Co
                 const active = current === c.id || (current === null && c.id === latest);
                 return (
                   <div key={c.id} className={`assistant-item${active ? " active" : ""}`}>
-                    <UnstyledButton style={{ flex: 1, minWidth: 0 }} onClick={() => onOpen(c.id)} title={`${c.title} · ${ago(c.updated_at)}`}>
+                    <UnstyledButton className="min-w-0 flex-1" onClick={() => onOpen(c.id)} title={`${c.title} · ${ago(c.updated_at)}`}>
                       <Text size="sm" fw={500} truncate>{c.title}</Text>
                     </UnstyledButton>
                     <ActionIcon className="assistant-item-delete" variant="subtle" color="gray" size="sm" onClick={() => remove(c.id)} aria-label={`Delete ${c.title}`}><IconTrash size={14} /></ActionIcon>
@@ -268,12 +268,12 @@ function SavedPanel({ onOpen, onToggle }: { onOpen: (conversationId: number) => 
   return (
     <div className="assistant-panel">
       <PanelHeader title="Saved answers">{data && <Badge variant="light" color="ai">{data.length}</Badge>}</PanelHeader>
-      <ScrollArea style={{ flex: 1 }} type="auto" px="md" pb="md">
+      <ScrollArea className="flex-1" type="auto" px="md" pb="md">
         {!data ? <Group justify="center" mt="md"><Loader color="ai" type="dots" /></Group>
           : !data.length ? <Text size="sm" c="dimmed" ta="center" mt="md">Nothing saved yet. Use the bookmark under any answer to keep it here.</Text>
           : <Stack gap={8}>{data.map(m => (
               <div key={m.id} className="assistant-item assistant-saved">
-                <UnstyledButton style={{ flex: 1, minWidth: 0 }} onClick={() => onOpen(m.conversation_id)}>
+                <UnstyledButton className="min-w-0 flex-1" onClick={() => onOpen(m.conversation_id)}>
                   {m.question && <Text size="sm" fw={600} truncate>{m.question}</Text>}
                   <Text size="xs" c="dimmed" lineClamp={3}>{m.text.replace(/\*\*/g, "")}</Text>
                   <Text size="xs" c="dimmed" mt={4}>{ago(m.created_at)}</Text>

@@ -133,7 +133,7 @@ function Integrations() {
               : <Badge color="teal">{wx.data.source} connected</Badge>}</Group>
           <Text size="sm" c="dimmed" mb="md">Open-Meteo is used without a key. Add a free OpenWeather key for OpenWeather data and radar map overlays. The key stays on the server.</Text>
           <Group align="flex-end" gap="xs">
-            <PasswordInput style={{ flex: 1 }} label="OpenWeather API key" placeholder={data.openweather.masked || "Paste key"} value={key} onChange={e => setKey(e.currentTarget.value)} />
+            <PasswordInput className="flex-1" label="OpenWeather API key" placeholder={data.openweather.masked || "Paste key"} value={key} onChange={e => setKey(e.currentTarget.value)} />
             <Button disabled={!key.trim()} loading={save.isPending} onClick={async () => { await save.mutateAsync({ openweather_key: key }); setKey(""); }}>Save & test</Button>
             {data.openweather.masked && <Button variant="default" onClick={() => save.mutate({ openweather_key: "" })}>Remove</Button>}
           </Group>

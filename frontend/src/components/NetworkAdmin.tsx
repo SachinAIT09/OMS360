@@ -8,6 +8,7 @@ import { fmt } from "../lib/format";
 import { PROFILE } from "../lib/profile";
 import { Loading, SectionTitle } from "./common";
 import { TerritoryMap } from "./TerritoryMap";
+import { LegendItem } from "./ui";
 
 interface ImportResult { matched: number; unmatched: number; unmatched_ids: string[]; missing_id: number }
 
@@ -105,7 +106,7 @@ export function NetworkAdmin() {
             pins={routes.data.substations.map(x => ({ id: x.id, lat: x.lat, lng: x.lng, color: "#f5a623", popup: <div><b>{x.name}</b> substation</div> }))} />
           <Group gap="md" mt={6}>
             {[["#3ec46d", "from utility GIS"], ["#4d8dff", "sandbox drawing"], ["#f5a623", "substation"]].map(([col, l]) => (
-              <Group key={l} gap={4}><div style={{ width: 14, height: 3, background: col }} /><Text size="xs" c="dimmed">{l}</Text></Group>))}
+              <Group key={l} gap={4}><LegendItem color={col} label={l} shape="line" /></Group>))}
           </Group>
         </Card>
       </Grid.Col>

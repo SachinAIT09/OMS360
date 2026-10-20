@@ -15,11 +15,13 @@ import type {
 } from "../api/types";
 import { useCurrentEvent } from "../auth/EventContext";
 import { AssetDetailView } from "../components/AssetDetail";
-import { AgeText, CONDITION_HEX, HealthBadge, KIND_LABEL, KIND_PLURAL, ModelNote, hiColor } from "../components/assetUi";
+import { AgeText, CONDITION_HEX, HI_LEGEND, HealthBadge, KIND_LABEL, KIND_PLURAL, ModelNote, hiColor } from "../components/assetUi";
 import { Empty, ErrorState, Loading, PageHeader, Stat } from "../components/common";
 import { EF_COLOR, TerritoryMap, type MapArea, type MapLine, type MapPin } from "../components/TerritoryMap";
 import { fmt, money, pct, sevColor } from "../lib/format";
 import { PROFILE } from "../lib/profile";
+import { LegendItem } from "../components/ui";
+import { MARK, SEV } from "../lib/colors";
 
 type Layer = "outline" | "regions" | "storm" | "circuits" | "substations" | "assets" | "outages" | "facilities";
 const LAYERS: { value: Layer; label: string }[] = [
@@ -107,7 +109,7 @@ export default function NetworkExplorerPage() {
   const hitBy = new Map((impact.data?.regions_affected ?? []).map(r => [r.id, r]));
   const areas: MapArea[] = on("regions") ? (geo.data?.regions ?? []).map(r => {
     const st = regionStats.get(r.id), hit = hitBy.get(r.id);
-    const color = colorBy === "storm" ? (hit?.circuits_hit ? "#e0506a" : hit?.pred ? "#f5a623" : "#3ec46d") : hiColor(st?.mean_hi);
+    const color = colorBy === "storm" ? (hit?.circuits_hit ? SEV.crit : hit?.pred ? SEV.watch : SEV.ok) : hiColor(st?.mean_hi);
     return { id: r.id, name: r.name, ring: r.hull, color, selected: region === r.id, dimmed: !!region && region !== r.id, onClick: () => select({ region: r.id }),
       label: <span><b>{r.name}</b>{st && <> · mean health {Math.round(st.mean_hi)} · {pct(st.pct_poor)} poor</>}{hit?.circuits_hit ? <> · {hit.circuits_hit} circuits in storm path</> : null}<br />approximate service area — click to open</span> };
   }) : [];
@@ -117,7 +119,7 @@ export default function NetworkExplorerPage() {
       const f = routeBy.get(id), h = healthBy.get(id), p: PredCircuit | undefined = predBy.get(id);
       if (!f?.route.length) return [];
       const sibling = !!circuit && id !== circuit;
-      const color = colorBy === "storm" ? (p ? (p.in_path ? "#e0506a" : sevColor(p.pct)) : "#8a9aa5") : hiColor(h?.mean_hi);
+      const color = colorBy === "storm" ? (p ? (p.in_path ? SEV.crit : sevColor(p.pct)) : SEV.unknown) : hiColor(h?.mean_hi);
       return [{ id, lines: f.route, color, weight: sibling ? 1.5 : id === circuit ? 5 : colorBy === "storm" && p?.in_path ? 4 : 2.5, opacity: sibling ? 0.4 : 0.9,
         tooltip: `${id} · ${h?.zone ?? ""} · health ${h ? Math.round(h.mean_hi) : "—"}${p ? ` · ${pct(p.pct)} predicted out${p.in_path ? " · in damage path" : ""}` : ""}`,
         onClick: () => select({ region: h?.region_id ?? region, sub: h?.substation_id ?? sub, circuit: id }), dashed: f.source === "synthetic" && id === circuit }];
@@ -127,7 +129,7 @@ export default function NetworkExplorerPage() {
     id: `s-${x.id}`, lat: x.lat, lng: x.lng, color: hiColor(x.worst_hi), onClick: () => select({ region: x.region_id, sub: x.id }),
   })) : [];
   const outagePins: MapPin[] = on("outages") ? (outages.data?.items ?? []).filter(o => circuit || scopeIds.has(o.feeder_id)).slice(0, 400).map(o => ({
-    id: `o-${o.id}`, lat: o.lat, lng: o.lng, color: "#ff3b6b",
+    id: `o-${o.id}`, lat: o.lat, lng: o.lng, color: MARK.outage,
     popup: <div><b>{o.number}</b> · {o.status}<br />{o.feeder_id} · {fmt(o.customers)} customers<br />{o.damage} · {o.cause}{o.asset_id && <><br />Unit: <Link to={`/asset/${o.asset_id}`}>{o.asset_id}</Link></>}</div>,
   })) : [];
 
@@ -204,18 +206,17 @@ export default function NetworkExplorerPage() {
 }
 
 function MapKey({ colorBy, circuit, storm }: { colorBy: "health" | "storm"; circuit: boolean; storm: boolean }) {
-  const sw = (c: string, l: string, round = false) => (
-    <Group key={l} gap={4} wrap="nowrap"><div style={{ width: 10, height: 10, borderRadius: round ? 5 : 2, background: c }} /><Text size="xs" c="dimmed">{l}</Text></Group>);
+  const sw = (c: string, l: string, round = false) => <LegendItem key={l} color={c} label={l} shape={round ? "dot" : "square"} />;
   return (
     <Stack gap={4} mt={8}>
       <Group gap="md">
         <Text size="xs" fw={600}>{colorBy === "health" ? "Circuits & regions: mean transformer health" : "Circuits: predicted share out"}</Text>
         {colorBy === "health"
-          ? [["#3ec46d", "≥ 70"], ["#f5a623", "55–70"], ["#f07a2e", "40–55"], ["#e0506a", "< 40"], ["#8a9aa5", "unknown"]].map(([c, l]) => sw(c, l))
-          : [["#3ec46d", "< 8%"], ["#f5a623", "8–20%"], ["#f07a2e", "20–40%"], ["#e0506a", "> 40% or in damage path"], ["#8a9aa5", "no prediction"]].map(([c, l]) => sw(c, l))}
+          ? [...HI_LEGEND, [SEV.unknown, "unknown"]].map(([c, l]) => sw(c, l))
+          : [[SEV.ok, "< 8%"], [SEV.watch, "8–20%"], [SEV.high, "20–40%"], [SEV.crit, "> 40% or in damage path"], [SEV.unknown, "no prediction"]].map(([c, l]) => sw(c, l))}
       </Group>
       <Group gap="md">
-        {sw("#3ec46d", "substation (worst unit's health)", true)}{sw("#ff3b6b", "open outage", true)}
+        {sw(SEV.ok, "substation (worst unit's health)", true)}{sw(MARK.outage, "open outage", true)}
         {storm && <><Text size="xs" c="dimmed">Storm paths:</Text>{EF_COLOR.map((c, i) => sw(c, `EF${i}`))}</>}
       </Group>
       {circuit && <Group gap="md"><Text size="xs" fw={600}>Equipment (by condition):</Text>
@@ -259,7 +260,7 @@ function StatePanel({ summary, impact, event, onRegion }: { summary?: AssetSumma
           <Table.Thead><Table.Tr><Table.Th>Region</Table.Th><Table.Th ta="right">Circuits</Table.Th><Table.Th ta="right">Health</Table.Th><Table.Th ta="right">Poor</Table.Th>
             {event && <Table.Th ta="right">In storm path</Table.Th>}</Table.Tr></Table.Thead>
           <Table.Tbody>{summary.regions.map(r => (
-            <Table.Tr key={r.id} className="row-click" onClick={() => onRegion(r.id)}>
+            <Table.Tr key={r.id} className="cursor-pointer" onClick={() => onRegion(r.id)}>
               <Table.Td fw={600}>{r.name}</Table.Td><Table.Td ta="right">{r.circuits}</Table.Td>
               <Table.Td ta="right" c={hiColor(r.mean_hi)} fw={600}>{Math.round(r.mean_hi)}</Table.Td><Table.Td ta="right">{pct(r.pct_poor)}</Table.Td>
               {event && <Table.Td ta="right">{hit.get(r.id)?.circuits_hit ?? 0}</Table.Td>}
@@ -284,7 +285,7 @@ function RegionPanel({ summary, subs, circuits, predBy, onSub, onCircuit }: { su
           <Table.Thead><Table.Tr><Table.Th>Substation</Table.Th><Table.Th ta="right">Circuits</Table.Th><Table.Th ta="right">Customers</Table.Th>
             <Table.Th ta="right">Worst unit</Table.Th><Table.Th ta="right">Breakers poor</Table.Th></Table.Tr></Table.Thead>
           <Table.Tbody>{subs.map(x => (
-            <Table.Tr key={x.id} className="row-click" onClick={() => onSub(x.id)}>
+            <Table.Tr key={x.id} className="cursor-pointer" onClick={() => onSub(x.id)}>
               <Table.Td><Text size="sm" fw={600}>{x.name}</Text><Text size="xs" c="dimmed">{x.zone}</Text></Table.Td>
               <Table.Td ta="right">{x.circuits}</Table.Td><Table.Td ta="right">{fmt(x.customers)}</Table.Td>
               <Table.Td ta="right" c={hiColor(x.worst_hi)} fw={600}>{x.worst_hi != null ? Math.round(x.worst_hi) : "—"}</Table.Td>
@@ -306,7 +307,7 @@ function CircuitList({ title, rows, predBy, onCircuit }: { title: string; rows: 
         <Table.Tbody>{rows.map(c => {
           const p = predBy.get(c.id);
           return (
-            <Table.Tr key={c.id} className="row-click" onClick={() => onCircuit(c)}>
+            <Table.Tr key={c.id} className="cursor-pointer" onClick={() => onCircuit(c)}>
               <Table.Td><Text size="sm" ff="monospace" fw={600}>{c.id}</Text><Text size="xs" c="dimmed">{c.substation} · {fmt(c.customers)} cust.</Text></Table.Td>
               <Table.Td ta="right" c={hiColor(c.mean_hi)} fw={600}>{Math.round(c.mean_hi)}</Table.Td>
               <Table.Td ta="right">{pct(c.pct_poor)}</Table.Td>
@@ -331,7 +332,7 @@ function SubstationPanel({ d, failed, predBy, onCircuit, onAsset }: { d?: Substa
       <Card padding={0}>
         <Text fw={600} p="sm" pb={0}>Substation equipment</Text>
         <Table highlightOnHover fz="sm"><Table.Tbody>{d.units.map(a => (
-          <Table.Tr key={a.id} className="row-click" onClick={() => onAsset(a.id)}>
+          <Table.Tr key={a.id} className="cursor-pointer" onClick={() => onAsset(a.id)}>
             <Table.Td><Text size="sm" fw={600}>{a.name}</Text><Text size="xs" c="dimmed" ff="monospace">{a.id}</Text></Table.Td>
             <Table.Td><AgeText a={a} /></Table.Td><Table.Td><HealthBadge hi={a.health_index} condition={a.condition} /></Table.Td>
           </Table.Tr>))}</Table.Tbody></Table>
@@ -371,7 +372,7 @@ function CircuitPanel({ id, pred, outages, event, onAsset }: { id: string; pred?
           <Table.Thead><Table.Tr><Table.Th>Type</Table.Th><Table.Th ta="right">Units</Table.Th><Table.Th ta="right">Mean age</Table.Th><Table.Th ta="right">Health</Table.Th>
             <Table.Th ta="right">Poor</Table.Th><Table.Th ta="right">Unknown</Table.Th></Table.Tr></Table.Thead>
           <Table.Tbody>{c.kinds.filter(k => k.kind !== "power_transformer").map(k => (
-            <Table.Tr key={k.kind} className="row-click" onClick={() => { setKind(k.kind); setPage(1); }} bg={k.kind === kind ? "var(--mantine-color-default-hover)" : undefined}>
+            <Table.Tr key={k.kind} className="cursor-pointer" onClick={() => { setKind(k.kind); setPage(1); }} bg={k.kind === kind ? "var(--mantine-color-default-hover)" : undefined}>
               <Table.Td fw={k.kind === kind ? 700 : 400}>{KIND_PLURAL[k.kind]}</Table.Td><Table.Td ta="right">{fmt(k.units)}</Table.Td>
               <Table.Td ta="right">{k.mean_age} y</Table.Td><Table.Td ta="right" c={hiColor(k.mean_hi)} fw={600}>{Math.round(k.mean_hi)}</Table.Td>
               <Table.Td ta="right">{k.poor}</Table.Td><Table.Td ta="right">{k.unknown}</Table.Td>
@@ -382,7 +383,7 @@ function CircuitPanel({ id, pred, outages, event, onAsset }: { id: string; pred?
         <Group justify="space-between" p="sm" pb={0}><Text fw={600}>{KIND_PLURAL[kind]} <Text span size="sm" c="dimmed">({fmt(c.list_total)}, highest risk first)</Text></Text></Group>
         {!c.transformers.length ? <Empty title="No units of this type on the circuit" /> : (
           <Table highlightOnHover fz="sm"><Table.Tbody>{c.transformers.map(a => (
-            <Table.Tr key={a.id} className="row-click" onClick={() => onAsset(a.id)}>
+            <Table.Tr key={a.id} className="cursor-pointer" onClick={() => onAsset(a.id)}>
               <Table.Td><Text size="sm" ff="monospace" fw={600}>{a.id}</Text><Text size="xs" c="dimmed">{a.name}</Text></Table.Td>
               <Table.Td><AgeText a={a} /></Table.Td>
               <Table.Td><HealthBadge hi={a.health_index} condition={a.condition} />{a.status === "damaged" && <Badge ml={4} size="xs" color="red">damaged</Badge>}</Table.Td>

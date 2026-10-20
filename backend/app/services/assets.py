@@ -362,12 +362,18 @@ def _combine(rows: list[dict]) -> dict:
 
 
 def _by_region_kind(s: Session, year: int) -> dict[tuple, dict]:
-    """(region_id, kind) → rollup, in one grouped query."""
+    """(region_id, kind) → rollup, in one grouped query (with condition-band and data-source counts, so the summary needs no
+    separate scans for them)."""
+    extra = [func.sum(case((Asset.condition == b, 1), else_=0)) for b in CONDITIONS] + [func.sum(case((Asset.source == "imported", 1), else_=0))]
     out = {}
-    for rid, kind, *vals in s.execute(select(Zone.region_id, Asset.kind, *_aggregates(year)).select_from(Asset)
+    n_agg = len(_aggregates(year))
+    for rid, kind, *vals in s.execute(select(Zone.region_id, Asset.kind, *_aggregates(year), *extra).select_from(Asset)
                                       .join(Zone, Zone.id == Asset.zone_id).group_by(Zone.region_id, Asset.kind)).all():
-        r = _row(vals)
-        r["_dated"] = vals[-1] or 0
+        agg, more = vals[:n_agg], vals[n_agg:]
+        r = _row(agg)
+        r["_dated"] = agg[-1] or 0
+        r["_bands"] = {b: int(n or 0) for b, n in zip(CONDITIONS, more)}
+        r["_imported"] = int(more[-1] or 0)
         out[(rid, kind)] = r
     return out
 
@@ -396,10 +402,14 @@ def summary(s: Session, region: str | None = None) -> dict:
     cells = _by_region_kind(s, year)
     in_scope = {k: v for k, v in cells.items() if not region or k[0] == region}
     per_kind = {kind: _combine([v for (_, k), v in in_scope.items() if k == kind]) for kind in KINDS}
-    bands_q = _scope(select(Asset.kind, Asset.condition, func.count(Asset.id)), region).group_by(Asset.kind, Asset.condition)
     bands: dict[str, dict] = {}
-    for kind, cond, n in s.execute(bands_q).all():
-        bands.setdefault(kind, {})[cond] = n
+    for (_, kind), v in in_scope.items():
+        for b, n in v["_bands"].items():
+            if n:
+                bands.setdefault(kind, {})[b] = bands.get(kind, {}).get(b, 0) + n
+    imported = sum(v["_imported"] for v in in_scope.values())
+    total_units = sum(v["units"] for v in in_scope.values())
+    sources = {k: n for k, n in (("sandbox", total_units - imported), ("imported", imported)) if n}
     by_kind = [{"kind": k, "label": label, **{x: y for x, y in per_kind[k].items() if not x.startswith("_")},
                 "bands": {b: bands.get(k, {}).get(b, 0) for b in CONDITIONS}} for k, label in KINDS.items() if per_kind[k]["units"]]
     total = _combine(list(in_scope.values()))
@@ -412,7 +422,7 @@ def summary(s: Session, region: str | None = None) -> dict:
             "bands": {b: bands.get(DIST, {}).get(b, 0) for b in CONDITIONS}, "power_bands": {b: bands.get(POWER, {}).get(b, 0) for b in CONDITIONS},
             "age_histogram": decades, "regions": regions if not region else [r for r in regions if r["id"] == region],
             "replacement_capex": total["replacement_capex"], "density": density(), "reference_date": reference_date(),
-            "sources": dict(s.execute(_scope(select(Asset.source, func.count(Asset.id)), region).group_by(Asset.source)).all()),
+            "sources": sources,
             "open_work_orders": s.scalar(select(func.count(WorkOrder.id)).where(WorkOrder.status.in_(("open", "scheduled"))))}
 
 

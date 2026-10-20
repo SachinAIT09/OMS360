@@ -2,13 +2,14 @@ import dayjs from "dayjs";
 import relativeTime from "dayjs/plugin/relativeTime";
 import utc from "dayjs/plugin/utc";
 import timezone from "dayjs/plugin/timezone";
+import { SEV } from "./colors";
 
 dayjs.extend(relativeTime);
 dayjs.extend(utc);
 dayjs.extend(timezone);
 
 /** Operations run on the utility's local time (set from the territory profile at startup). */
-export let TZ = "America/Chicago";
+let TZ = "America/Chicago";
 export const setTimeZone = (tz: string) => { TZ = tz; };
 const local = (iso: string) => dayjs(iso).tz(TZ);
 
@@ -19,7 +20,6 @@ export const dtShort = (iso: string | null | undefined) => (iso ? local(iso).for
 /** A calendar date. Date-only values ("2026-10-20") are shown as is — converting them from UTC midnight would land on the previous day. */
 export const date = (iso: string | null | undefined) =>
   !iso ? "—" : /^\d{4}-\d{2}-\d{2}$/.test(iso) ? dayjs(iso, "YYYY-MM-DD").format("MMM D, YYYY") : local(iso).format("MMM D, YYYY");
-export const time = (iso: string | null | undefined) => (iso ? local(iso).format("h:mm A") : "—");
 export const ago = (iso: string | null | undefined) => (iso ? dayjs(iso).fromNow() : "—");
 export const hoursUntil = (iso: string | null | undefined) => (iso ? dayjs(iso).diff(dayjs(), "hour", true) : null);
 export const money = (n: number) => (n >= 1e6 ? `$${(n / 1e6).toFixed(1)}M` : `$${fmt(n)}`);
@@ -39,7 +39,7 @@ export const impactWord = (e: { kind: string } | null | undefined) => (isRain(e)
 export const scenario = (p: { scenario?: string; category: number; kind?: string }) => p.scenario ?? (p.kind === "tornado" ? `EF${p.category}` : `Cat ${p.category}`);
 
 /** Outage-severity colour scale shared by maps, tables and meters. */
-export const sevColor = (v: number) => (v < 0.08 ? "#3ec46d" : v < 0.2 ? "#f5a623" : v < 0.4 ? "#f07a2e" : "#e0506a");
+export const sevColor = (v: number) => (v < 0.08 ? SEV.ok : v < 0.2 ? SEV.watch : v < 0.4 ? SEV.high : SEV.crit);
 
 export const FAC_COLOR: Record<string, string> = { H: "#e0506a", W: "#2b9bff", E: "#f5a623", S: "#3ec46d", M: "#c3b1ff" };
 

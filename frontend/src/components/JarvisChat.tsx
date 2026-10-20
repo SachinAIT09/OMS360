@@ -69,7 +69,7 @@ export function AnswerBody({ m, onAction }: { m: JarvisMessage; onAction: (a: Ja
     <>
       <Text size="sm"><Rich text={m.text} /></Text>
       {!!m.bullets?.length && <Box component="ul" my={4} pl="md">{m.bullets.map((b, j) => <li key={j}><Text size="sm"><Rich text={b} /></Text></li>)}</Box>}
-      {m.quote && <Paper p="xs" mt={6} withBorder><Text size="sm" className="pre-wrap">{m.quote}</Text></Paper>}
+      {m.quote && <Paper p="xs" mt={6} withBorder><Text size="sm" className="whitespace-pre-wrap">{m.quote}</Text></Paper>}
       {!!m.actions?.length && <Group gap={6} mt={8}>{m.actions.map((a, j) => (
         <Button key={j} size="compact-xs" variant={a.kind === "approve" ? "filled" : "default"} onClick={() => onAction(a)}>{a.label}</Button>))}</Group>}
     </>

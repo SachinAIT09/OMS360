@@ -19,12 +19,12 @@ export function RecommendationCard({ r }: { r: Recommendation }) {
     <Card padding="sm" style={{ borderLeft: `3px solid ${decided ? "var(--mantine-color-teal-6)" : border}`, opacity: decided ? 0.7 : 1 }}>
       <Group gap="xs" wrap="nowrap" align="flex-start">
         <PriorityBadge priority={r.priority} size="sm" />
-        <Text size="sm" fw={600} style={{ flex: 1 }}>{r.title}</Text>
+        <Text size="sm" fw={600} className="flex-1">{r.title}</Text>
       </Group>
       {r.detail && <Text size="xs" c="dimmed" mt={6}>{r.detail}</Text>}
       {r.impact && <Group gap={4} mt={6}><IconSparkles size={13} color="var(--mantine-color-ai-4)" /><Text size="xs" c="ai.3" fw={500}>{r.impact}</Text></Group>}
       {r.why && <>
-        <UnstyledButton onClick={toggle} mt={6}><Group gap={4}><Text size="xs" c="dimmed">Why this recommendation?</Text><IconChevronDown size={12} style={{ transform: open ? "rotate(180deg)" : undefined }} /></Group></UnstyledButton>
+        <UnstyledButton onClick={toggle} mt={6}><Group gap={4}><Text size="xs" c="dimmed">Why this recommendation?</Text><IconChevronDown size={12} className={open ? "rotate-180" : undefined} /></Group></UnstyledButton>
         <Collapse in={open}><Text size="xs" c="dimmed" mt={4}>{r.why}</Text></Collapse>
       </>}
       <Group justify="space-between" mt="sm">

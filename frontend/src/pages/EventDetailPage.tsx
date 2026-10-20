@@ -89,7 +89,7 @@ function StormTab({ e }: { e: Detail }) {
           {span && (
             <Group mt="sm" gap="sm" wrap="nowrap" align="center">
               <Text size="xs" c="dimmed" w={120}>Timeline: {asOf ? dayjs(asOf).format("h:mm A") : "now"}</Text>
-              <Slider style={{ flex: 1 }} min={span[0] - 30 * 60_000} max={span[1] + 30 * 60_000} step={5 * 60_000} value={asOf ?? Math.min(Math.max(Date.now(), span[0] - 30 * 60_000), span[1] + 30 * 60_000)}
+              <Slider className="flex-1" min={span[0] - 30 * 60_000} max={span[1] + 30 * 60_000} step={5 * 60_000} value={asOf ?? Math.min(Math.max(Date.now(), span[0] - 30 * 60_000), span[1] + 30 * 60_000)}
                 onChange={setAsOf} label={v => dt(new Date(v).toISOString())} aria-label="Tornado timeline" />
               <Button size="compact-xs" variant="subtle" onClick={() => setAsOf(null)}>Now</Button>
             </Group>)}
@@ -202,7 +202,7 @@ function PredictionTab({ e }: { e: Detail }) {
               <Table>
                 <Table.Thead><Table.Tr><Table.Th>Zone</Table.Th><Table.Th ta="right">Predicted out</Table.Th><Table.Th ta="right">%</Table.Th><Table.Th>Driver</Table.Th><Table.Th ta="right">Restore</Table.Th></Table.Tr></Table.Thead>
                 <Table.Tbody>{[...p.zones].sort((a, b) => b.pred - a.pred).map(z => (
-                  <Table.Tr key={z.id}><Table.Td>{z.short}</Table.Td><Table.Td ta="right" className="tabular">{fmt(z.pred)}</Table.Td>
+                  <Table.Tr key={z.id}><Table.Td>{z.short}</Table.Td><Table.Td ta="right" className="tabular-nums">{fmt(z.pred)}</Table.Td>
                     <Table.Td ta="right" fw={600} c={sevColor(z.pct)}>{pct(z.pct)}</Table.Td><Table.Td><Text size="xs" c="dimmed">{z.driver}</Text>
                       {z.hazard && <Text size="xs" c="dimmed">{rain ? `${z.hazard.rain_in} in rain` : `gust ${Math.round(z.hazard.gust_mph ?? 0)} mph${z.hazard.surge_ft ? ` · surge ${z.hazard.surge_ft} ft` : ""}${z.hazard.path_km != null ? ` · path ${z.hazard.path_km} km` : ""}`}</Text>}</Table.Td>
                     <Table.Td ta="right">{z.eta_h} h</Table.Td></Table.Tr>))}
@@ -219,9 +219,9 @@ function PredictionTab({ e }: { e: Detail }) {
                 <Table.Th ta="right">Circuits hit</Table.Th><Table.Th ta="right">Customers on them</Table.Th><Table.Th ta="right">Transformers on them</Table.Th></Table.Tr></Table.Thead>
               <Table.Tbody>{p.paths.map((x, i) => (
                 <Table.Tr key={i}><Table.Td><Badge style={{ background: EF_COLOR[x.ef] }} c="dark">EF{x.ef}</Badge></Table.Td>
-                  <Table.Td ta="right" className="tabular">{x.length_km} km × {fmt(x.width_m)} m</Table.Td><Table.Td>{dt(x.start_at)}</Table.Td>
-                  <Table.Td ta="right" className="tabular">{x.circuits_hit}</Table.Td><Table.Td ta="right" className="tabular">{fmt(x.customers_in_path)}</Table.Td>
-                  <Table.Td ta="right" className="tabular">{fmt(x.xfmrs_in_path)}</Table.Td></Table.Tr>))}
+                  <Table.Td ta="right" className="tabular-nums">{x.length_km} km × {fmt(x.width_m)} m</Table.Td><Table.Td>{dt(x.start_at)}</Table.Td>
+                  <Table.Td ta="right" className="tabular-nums">{x.circuits_hit}</Table.Td><Table.Td ta="right" className="tabular-nums">{fmt(x.customers_in_path)}</Table.Td>
+                  <Table.Td ta="right" className="tabular-nums">{fmt(x.xfmrs_in_path)}</Table.Td></Table.Tr>))}
               </Table.Tbody>
             </Table>
             <Text size="xs" c="dimmed" p="sm">Before touchdown these are planning paths from the SPC outlook and the parent model; replace them with surveyed paths after the storms
@@ -281,7 +281,7 @@ function PredictionTab({ e }: { e: Detail }) {
           <Table.Thead><Table.Tr><Table.Th>Run</Table.Th><Table.Th>Scenario</Table.Th><Table.Th ta="right">Predicted out</Table.Th><Table.Th ta="right">Line workers needed</Table.Th><Table.Th>By</Table.Th></Table.Tr></Table.Thead>
           <Table.Tbody>{(runs.data ?? []).map((r, i) => (
             <Table.Tr key={r.id}><Table.Td>{dt(r.created_at)} {i === 0 && <Badge size="xs" ml={4}>current</Badge>}</Table.Td><Table.Td>{r.scenario ?? scale(e, r.category)}</Table.Td>
-              <Table.Td ta="right" className="tabular">{fmt(r.pred_total)}</Table.Td><Table.Td ta="right" className="tabular">{fmt(r.required_line)}</Table.Td><Table.Td>{r.created_by}</Table.Td></Table.Tr>))}
+              <Table.Td ta="right" className="tabular-nums">{fmt(r.pred_total)}</Table.Td><Table.Td ta="right" className="tabular-nums">{fmt(r.required_line)}</Table.Td><Table.Td>{r.created_by}</Table.Td></Table.Tr>))}
           </Table.Tbody>
         </Table>
       </Card>

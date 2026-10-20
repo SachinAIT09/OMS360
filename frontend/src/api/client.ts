@@ -19,7 +19,7 @@ export class ApiError extends Error {
   constructor(public status: number, message: string) { super(message); }
 }
 
-export async function request<T>(method: string, path: string, body?: unknown): Promise<T> {
+async function request<T>(method: string, path: string, body?: unknown): Promise<T> {
   const token = tokenStore.get();
   let res: Response;
   try {

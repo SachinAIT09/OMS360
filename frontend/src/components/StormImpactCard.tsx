@@ -38,7 +38,7 @@ export function StormImpactCard({ eventId }: { eventId: number }) {
               <Table.Thead><Table.Tr><Table.Th>Circuit</Table.Th><Table.Th>Substation · region</Table.Th><Table.Th ta="right">Customers</Table.Th>
                 <Table.Th ta="right">Predicted out</Table.Th><Table.Th ta="right">Back in</Table.Th></Table.Tr></Table.Thead>
               <Table.Tbody>{d.circuits_hit.slice(0, 8).map(c => (
-                <Table.Tr key={c.id} className="row-click" onClick={() => go(`/network?circuit=${c.id}`)}>
+                <Table.Tr key={c.id} className="cursor-pointer" onClick={() => go(`/network?circuit=${c.id}`)}>
                   <Table.Td ff="monospace" fw={600}>{c.id}{c.path_ef != null && tornado && <Badge ml={6} size="xs" color="red" variant="light">EF{c.path_ef}</Badge>}</Table.Td>
                   <Table.Td>{c.substation} · {c.region}</Table.Td><Table.Td ta="right">{fmt(c.customers)}</Table.Td>
                   <Table.Td ta="right">{pct(c.pct)}</Table.Td><Table.Td ta="right">~{Math.round(c.eta_h)} h</Table.Td>
@@ -56,8 +56,8 @@ export function StormImpactCard({ eventId }: { eventId: number }) {
 function Fig({ label, value, hint, red }: { label: string; value: string | number; hint?: string; red?: boolean }) {
   return (
     <div>
-      <Text size="xs" c="dimmed" tt="uppercase" fw={600} style={{ letterSpacing: ".04em" }}>{label}</Text>
-      <Text fz={22} fw={700} c={red ? "red.5" : undefined} className="tabular">{value}</Text>
+      <Text size="xs" c="dimmed" tt="uppercase" fw={600} className="tracking-[.04em]">{label}</Text>
+      <Text fz={22} fw={700} c={red ? "red.5" : undefined} className="tabular-nums">{value}</Text>
       {hint && <Text size="xs" c="dimmed">{hint}</Text>}
     </div>
   );

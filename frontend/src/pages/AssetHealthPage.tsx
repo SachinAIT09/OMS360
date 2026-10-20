@@ -11,11 +11,12 @@ import { useAction, useGet, useGeo, useRoutes } from "../api/hooks";
 import type { Asset, AssetKind, AssetSummary, CircuitHealth, HealthModel, ReplacementPlan, SubstationAsset, WorkOrder } from "../api/types";
 import { useAuth } from "../auth/AuthContext";
 import { WorkOrders } from "../components/AssetDetail";
-import { AgeText, AssetLink, AssetTable, BandBar, HealthBadge, KIND_LABEL, KIND_PLURAL, ModelNote, hiColor } from "../components/assetUi";
+import { AgeText, AssetLink, AssetTable, BandBar, HI_LEGEND, HealthBadge, KIND_LABEL, KIND_PLURAL, ModelNote, hiColor } from "../components/assetUi";
 import { ErrorState, Loading, PageHeader, SectionTitle, Stat } from "../components/common";
 import { TerritoryMap } from "../components/TerritoryMap";
 import { date, fmt, money, pct } from "../lib/format";
 import { PROFILE } from "../lib/profile";
+import { LegendItem, MiniBar } from "../components/ui";
 
 export default function AssetHealthPage() {
   const [params, setParams] = useSearchParams();
@@ -48,7 +49,7 @@ export default function AssetHealthPage() {
         <Tooltip label={`Ages are whole years from the install year to ${date(sm.reference_date)}`}><Badge variant="outline" color="gray">Ages as of {date(sm.reference_date)}</Badge></Tooltip>
         {Object.entries(sm.sources).map(([k, n]) => <Badge key={k} variant="outline" color={k === "imported" ? "teal" : "gray"}>{fmt(n)} {k === "imported" ? "imported" : "sandbox (synthetic)"} records</Badge>)}
       </Group>
-      <SimpleGrid cols={{ base: 2, md: 3, xl: 6 }} mb="lg" style={{ opacity: isFetching ? 0.7 : 1 }}>
+      <SimpleGrid cols={{ base: 2, md: 3, xl: 6 }} mb="lg" className={isFetching ? "opacity-70" : undefined}>
         <Stat label="Distribution transformers" value={fmt(d.units)} hint={`mean age ${d.mean_age} y · oldest ${d.oldest} y`} icon={<IconBolt size={16} />} />
         <Stat label="Poor or critical" value={fmt(sm.all.poor)} color="orange" hint={`${pct(sm.all.pct_poor)} of ${fmt(sm.all.units)} units · ${fmt(sm.all.critical)} critical`} progress={sm.all.pct_poor} />
         <Stat label="Not scored" value={fmt(sm.all.unknown)} hint="install year not recorded" />
@@ -77,16 +78,16 @@ export default function AssetHealthPage() {
                   <Table.Th ta="right">Mean age</Table.Th><Table.Th ta="right">Health</Table.Th><Table.Th ta="right">Poor / critical</Table.Th>
                   <Table.Th ta="right">Failures / yr</Table.Th><Table.Th ta="right">Substation units</Table.Th><Table.Th ta="right">Backlog</Table.Th></Table.Tr></Table.Thead>
                 <Table.Tbody>{all.data.regions.map(r => (
-                  <Table.Tr key={r.id} className="row-click" onClick={() => set("region", region === r.id ? null : r.id)} bg={region === r.id ? "var(--mantine-color-default-hover)" : undefined}>
+                  <Table.Tr key={r.id} className="cursor-pointer" onClick={() => set("region", region === r.id ? null : r.id)} bg={region === r.id ? "var(--mantine-color-default-hover)" : undefined}>
                     <Table.Td fw={600}>{r.name}</Table.Td>
-                    <Table.Td ta="right" className="tabular">{r.circuits}</Table.Td>
-                    <Table.Td ta="right" className="tabular">{fmt(r.units)}</Table.Td>
-                    <Table.Td ta="right" className="tabular">{r.mean_age} y</Table.Td>
-                    <Table.Td ta="right" className="tabular" fw={600} c={hiColor(r.mean_hi)}>{Math.round(r.mean_hi)}</Table.Td>
-                    <Table.Td ta="right" className="tabular">{fmt(r.poor)} <Text span size="xs" c="dimmed">({pct(r.pct_poor)})</Text></Table.Td>
-                    <Table.Td ta="right" className="tabular">{fmt(r.expected_failures)}</Table.Td>
-                    <Table.Td ta="right" className="tabular">{r.power_transformers} <Text span size="xs" c={r.power_poor ? "orange.5" : "dimmed"}>({r.power_poor} poor)</Text></Table.Td>
-                    <Table.Td ta="right" className="tabular">{money(r.replacement_capex)}</Table.Td>
+                    <Table.Td ta="right" className="tabular-nums">{r.circuits}</Table.Td>
+                    <Table.Td ta="right" className="tabular-nums">{fmt(r.units)}</Table.Td>
+                    <Table.Td ta="right" className="tabular-nums">{r.mean_age} y</Table.Td>
+                    <Table.Td ta="right" className="tabular-nums" fw={600} c={hiColor(r.mean_hi)}>{Math.round(r.mean_hi)}</Table.Td>
+                    <Table.Td ta="right" className="tabular-nums">{fmt(r.poor)} <Text span size="xs" c="dimmed">({pct(r.pct_poor)})</Text></Table.Td>
+                    <Table.Td ta="right" className="tabular-nums">{fmt(r.expected_failures)}</Table.Td>
+                    <Table.Td ta="right" className="tabular-nums">{r.power_transformers} <Text span size="xs" c={r.power_poor ? "orange.5" : "dimmed"}>({r.power_poor} poor)</Text></Table.Td>
+                    <Table.Td ta="right" className="tabular-nums">{money(r.replacement_capex)}</Table.Td>
                   </Table.Tr>))}
                 </Table.Tbody>
               </Table>
@@ -98,7 +99,7 @@ export default function AssetHealthPage() {
       </Grid>
 
       <Tabs value={tab} onChange={v => set("tab", v === "circuits" ? null : v)} keepMounted={false}>
-        <Tabs.List mb="md" style={{ overflowX: "auto", flexWrap: "nowrap" }}>
+        <Tabs.List mb="md" className="flex-nowrap overflow-x-auto">
           <Tabs.Tab value="circuits">Circuits</Tabs.Tab>
           <Tabs.Tab value="substations">Substation transformers</Tabs.Tab>
           <Tabs.Tab value="types">By equipment type</Tabs.Tab>
@@ -146,8 +147,7 @@ function CircuitsTab({ region, regionName }: { region: string | null; regionName
         <TerritoryMap height={420} lines={lines} outline={geo.data?.state?.rings} fit={hull ?? null} />
         <Group gap="md" mt={6}>
           <Text size="xs" c="dimmed">Circuit colour = mean transformer health; thicker = larger Poor/Critical share. Click a circuit to open it.</Text>
-          {[["#3ec46d", "≥ 70"], ["#f5a623", "55–70"], ["#f07a2e", "40–55"], ["#e0506a", "< 40"]].map(([c, l]) => (
-            <Group key={l} gap={4}><div style={{ width: 10, height: 10, borderRadius: 2, background: c }} /><Text size="xs" c="dimmed">{l}</Text></Group>))}
+          {HI_LEGEND.map(([c, l]) => <LegendItem key={l} color={c} label={l} />)}
         </Group>
       </Card>
       <Card padding={0}>
@@ -164,19 +164,18 @@ function CircuitsTab({ region, regionName }: { region: string | null; regionName
               <Table.Th ta="right">Poor / critical</Table.Th><Table.Th ta="right">Poles poor</Table.Th><Table.Th ta="right">Switchgear poor</Table.Th>
               <Table.Th ta="right">Risk</Table.Th><Table.Th ta="right">Backlog</Table.Th></Table.Tr></Table.Thead>
             <Table.Tbody>{rows.slice(0, limit).map(c => (
-              <Table.Tr key={c.id} className="row-click" onClick={() => open(c)}>
+              <Table.Tr key={c.id} className="cursor-pointer" onClick={() => open(c)}>
                 <Table.Td ff="monospace" fz="sm" fw={600}>{c.id}{c.critical_facility && <Tooltip label={c.critical_facility}><Badge ml={6} size="xs" color="red" variant="outline">critical</Badge></Tooltip>}</Table.Td>
                 <Table.Td><Text size="sm">{c.substation ?? "—"}</Text><Text size="xs" c="dimmed">{c.zone} · {c.region}</Text></Table.Td>
-                <Table.Td ta="right" className="tabular">{fmt(c.customers)}</Table.Td>
-                <Table.Td ta="right" className="tabular">{fmt(c.units)}{c.unknown > 0 && <Text size="xs" c="dimmed">{c.unknown} unknown age</Text>}</Table.Td>
-                <Table.Td ta="right" className="tabular">{c.mean_age} y</Table.Td>
-                <Table.Td><Group gap={6} wrap="nowrap"><div style={{ width: 70, height: 6, borderRadius: 3, background: "var(--mantine-color-default-border)" }}>
-                  <div style={{ width: `${c.mean_hi}%`, height: 6, borderRadius: 3, background: hiColor(c.mean_hi) }} /></div><Text size="sm" fw={600}>{Math.round(c.mean_hi)}</Text></Group></Table.Td>
-                <Table.Td ta="right" className="tabular" c={c.pct_poor >= 0.25 ? "orange.5" : undefined}>{fmt(c.poor)} <Text span size="xs" c="dimmed">({pct(c.pct_poor)})</Text></Table.Td>
-                <Table.Td ta="right" className="tabular">{c.poles_poor}/{c.poles}</Table.Td>
-                <Table.Td ta="right" className="tabular">{c.switchgear_poor}/{c.switchgear}</Table.Td>
-                <Table.Td ta="right" className="tabular">{c.risk_all.toFixed(1)}</Table.Td>
-                <Table.Td ta="right" className="tabular">{money(c.replacement_capex)}</Table.Td>
+                <Table.Td ta="right" className="tabular-nums">{fmt(c.customers)}</Table.Td>
+                <Table.Td ta="right" className="tabular-nums">{fmt(c.units)}{c.unknown > 0 && <Text size="xs" c="dimmed">{c.unknown} unknown age</Text>}</Table.Td>
+                <Table.Td ta="right" className="tabular-nums">{c.mean_age} y</Table.Td>
+                <Table.Td><Group gap={6} wrap="nowrap"><MiniBar value={c.mean_hi} color={hiColor(c.mean_hi)} /><Text size="sm" fw={600}>{Math.round(c.mean_hi)}</Text></Group></Table.Td>
+                <Table.Td ta="right" className="tabular-nums" c={c.pct_poor >= 0.25 ? "orange.5" : undefined}>{fmt(c.poor)} <Text span size="xs" c="dimmed">({pct(c.pct_poor)})</Text></Table.Td>
+                <Table.Td ta="right" className="tabular-nums">{c.poles_poor}/{c.poles}</Table.Td>
+                <Table.Td ta="right" className="tabular-nums">{c.switchgear_poor}/{c.switchgear}</Table.Td>
+                <Table.Td ta="right" className="tabular-nums">{c.risk_all.toFixed(1)}</Table.Td>
+                <Table.Td ta="right" className="tabular-nums">{money(c.replacement_capex)}</Table.Td>
               </Table.Tr>))}
             </Table.Tbody>
           </Table>
@@ -203,17 +202,17 @@ function SubstationsTab({ region }: { region: string | null }) {
             <Table.Th ta="right">DGA (TDCG)</Table.Th><Table.Th ta="right">Moisture</Table.Th><Table.Th ta="right">Faults</Table.Th><Table.Th ta="right">Peak load</Table.Th>
             <Table.Th>Health</Table.Th><Table.Th ta="right">Failure / yr</Table.Th><Table.Th>What drives it</Table.Th></Table.Tr></Table.Thead>
           <Table.Tbody>{data.map(a => (
-            <Table.Tr key={a.id} className="row-click" onClick={() => go(`/asset/${encodeURIComponent(a.id)}`)}>
+            <Table.Tr key={a.id} className="cursor-pointer" onClick={() => go(`/asset/${encodeURIComponent(a.id)}`)}>
               <Table.Td><Text size="sm" fw={600}>{a.name}</Text><Group gap={4}><AssetLink id={a.id} /><Text size="xs" c="dimmed">{a.manufacturer}{a.ltc ? " · LTC" : ""} · {a.circuits} circuits</Text></Group></Table.Td>
               <Table.Td><Text size="sm">{a.region ?? "—"}</Text><Text size="xs" c="dimmed">{a.zone}</Text></Table.Td>
-              <Table.Td ta="right" className="tabular">{(a.rating_kva / 1000).toFixed(1)} MVA</Table.Td>
+              <Table.Td ta="right" className="tabular-nums">{(a.rating_kva / 1000).toFixed(1)} MVA</Table.Td>
               <Table.Td><AgeText a={a} /></Table.Td>
-              <Table.Td ta="right" className="tabular">{a.dga_tdcg_ppm != null ? `${fmt(a.dga_tdcg_ppm)} ppm` : <Text span size="xs" c="dimmed">no test</Text>}</Table.Td>
-              <Table.Td ta="right" className="tabular">{a.oil_moisture_ppm ?? "—"} ppm</Table.Td>
-              <Table.Td ta="right" className="tabular">{a.through_faults ?? "—"}</Table.Td>
-              <Table.Td ta="right" className="tabular">{a.peak_load_pct != null ? `${Math.round(a.peak_load_pct)}%` : "—"}</Table.Td>
+              <Table.Td ta="right" className="tabular-nums">{a.dga_tdcg_ppm != null ? `${fmt(a.dga_tdcg_ppm)} ppm` : <Text span size="xs" c="dimmed">no test</Text>}</Table.Td>
+              <Table.Td ta="right" className="tabular-nums">{a.oil_moisture_ppm ?? "—"} ppm</Table.Td>
+              <Table.Td ta="right" className="tabular-nums">{a.through_faults ?? "—"}</Table.Td>
+              <Table.Td ta="right" className="tabular-nums">{a.peak_load_pct != null ? `${Math.round(a.peak_load_pct)}%` : "—"}</Table.Td>
               <Table.Td><HealthBadge hi={a.health_index} condition={a.condition} />{a.maintenance_overdue && <Badge ml={4} size="xs" color="orange" variant="outline">maint. overdue</Badge>}</Table.Td>
-              <Table.Td ta="right" className="tabular">{pct(a.pof_12m, 1)}</Table.Td>
+              <Table.Td ta="right" className="tabular-nums">{pct(a.pof_12m, 1)}</Table.Td>
               <Table.Td><Text size="xs" c="dimmed">{a.drivers.slice(0, 2).join(" · ") || "—"}</Text></Table.Td>
             </Table.Tr>))}
           </Table.Tbody>
@@ -298,7 +297,19 @@ function ModelTab() {
   );
 }
 
-const MARKS = [1, 5, 10, 20, 50, 100, 200];
+/* The budget slider is logarithmic: every step multiplies the budget, so $1M–$20M gets as much track as $20M–$200M and the
+   marks are evenly spread instead of piling up at the left end. */
+const MIN_M = 1, MAX_M = 200, STEPS = 1000;
+const MARKS = [1, 5, 20, 50, 200];
+const toPos = (m: number) => Math.round((Math.log10(m / MIN_M) / Math.log10(MAX_M / MIN_M)) * STEPS);
+const niceM = (m: number) => (m < 10 ? Math.round(m * 2) / 2 : m < 50 ? Math.round(m) : m < 100 ? Math.round(m / 5) * 5 : Math.round(m / 10) * 10);
+const fromPos = (p: number) => niceM(MIN_M * 10 ** ((p / STEPS) * Math.log10(MAX_M / MIN_M)));
+/* Keyboard: one track step is too small to reach the next rounded budget, so arrow keys move between rounded values instead. */
+const nextM = (m: number) => Math.min(MAX_M, niceM(m + (m < 10 ? 0.5 : m < 50 ? 1 : m < 100 ? 5 : 10)));
+const prevM = (m: number) => Math.max(MIN_M, niceM(m - (m <= 10 ? 0.5 : m <= 50 ? 1 : m <= 100 ? 5 : 10)));
+const KEY_MOVE: Record<string, (m: number) => number> = {
+  ArrowRight: nextM, ArrowUp: nextM, ArrowLeft: prevM, ArrowDown: prevM, Home: () => MIN_M, End: () => MAX_M,
+};
 
 /** Capital plan: what a budget buys in avoided customer outages, and the fleet in 5 and 10 years with and without it. */
 function PlanTab({ region, regionName }: { region: string | null; regionName?: string }) {
@@ -314,8 +325,12 @@ function PlanTab({ region, regionName }: { region: string | null; regionName?: s
         <Grid align="center">
           <Grid.Col span={{ base: 12, md: 6 }}>
             <Text size="sm" fw={600}>Replacement budget: {money(budgetM * 1e6)} {regionName && <Badge ml={6} variant="light">{regionName}</Badge>}</Text>
-            <Slider mt="sm" mb="lg" min={1} max={200} step={1} value={budgetM} onChange={setBudgetM} label={v => money(v * 1e6)} aria-label="Replacement budget"
-              marks={MARKS.map(m => ({ value: m, label: `$${m}M` }))} />
+            {/* Mantine's Slider sets its own onKeyDownCapture, so the keyboard override sits on a wrapper (capture runs outside-in). */}
+            <div onKeyDownCapture={e => { const move = KEY_MOVE[e.key]; if (move) { e.preventDefault(); e.stopPropagation(); setBudgetM(move); } }}>
+              <Slider mt="sm" mb={36} min={0} max={STEPS} step={1} value={toPos(budgetM)} onChange={p => setBudgetM(fromPos(p))}
+                label={p => money(fromPos(p) * 1e6)} thumbLabel="Replacement budget"
+                marks={MARKS.map(m => ({ value: toPos(m), label: `$${m}M` }))} />
+            </div>
           </Grid.Col>
           <Grid.Col span={{ base: 12, md: 6 }}>
             <Select value={kind} onChange={v => v && setKind(v)} allowDeselect={false} aria-label="Equipment type"
@@ -326,7 +341,7 @@ function PlanTab({ region, regionName }: { region: string | null; regionName?: s
           order until the budget runs out. Pick a region at the top of the page to plan for one region.</Text>
       </Card>
       {!p ? <Loading /> : !p.fleet ? <Alert color="gray">No units in scope.</Alert> : <>
-        <SimpleGrid cols={{ base: 2, md: 5 }} style={{ opacity: isFetching ? 0.6 : 1 }}>
+        <SimpleGrid cols={{ base: 2, md: 5 }} className={isFetching ? "opacity-60" : undefined}>
           <Stat label="Units replaced" value={fmt(p.units)} hint={Object.entries(p.by_kind).filter(([, n]) => n).map(([k, n]) => `${fmt(n)} ${KIND_LABEL[k as AssetKind].toLowerCase()}`).join(" · ") || "—"} />
           <Stat label="Spend" value={money(p.cost)} hint={`of ${money(p.budget)}`} />
           <Stat label="Customer risk removed" value={pct(p.risk_reduced_pct)} color="teal" hint="customer-outages a year from failures" />
@@ -377,7 +392,7 @@ function PlanTab({ region, regionName }: { region: string | null; regionName?: s
               <Table.Thead><Table.Tr><Table.Th>Unit</Table.Th><Table.Th>Where</Table.Th><Table.Th ta="right">Age</Table.Th><Table.Th>Health</Table.Th>
                 <Table.Th>Why</Table.Th><Table.Th ta="right">Cost</Table.Th><Table.Th ta="right">Risk removed / yr</Table.Th></Table.Tr></Table.Thead>
               <Table.Tbody>{p.items.map(a => (
-                <Table.Tr key={a.id} className="row-click" onClick={() => go(`/asset/${encodeURIComponent(a.id)}`)}>
+                <Table.Tr key={a.id} className="cursor-pointer" onClick={() => go(`/asset/${encodeURIComponent(a.id)}`)}>
                   <Table.Td><Text size="sm" fw={600}>{a.name}</Text><AssetLink id={a.id} /></Table.Td>
                   <Table.Td><Text size="sm">{a.where}</Text><Text size="xs" c="dimmed">{a.region}</Text></Table.Td>
                   <Table.Td ta="right">{a.age != null ? `${a.age} y` : <Text span size="xs" c="dimmed">unknown</Text>}</Table.Td>

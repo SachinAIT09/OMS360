@@ -96,9 +96,6 @@ body { -webkit-font-smoothing: antialiased; }
   .assistant-rail.open .assistant-rail-panel { border: 1px solid var(--mantine-color-default-border); box-shadow: var(--mantine-shadow-lg); }
   .assistant-user { max-width: 90%; }
 }
-.pre-wrap { white-space: pre-wrap; }
-.tabular { font-variant-numeric: tabular-nums; }
-.row-click { cursor: pointer; }
 
 /* ---- Sign-in page (glass over brand artwork) ---- */
 .login-shell { position: relative; min-height: 100vh; background-size: cover; background-position: center; display: flex; align-items: center; overflow: hidden; }

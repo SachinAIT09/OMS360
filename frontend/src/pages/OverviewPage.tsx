@@ -78,7 +78,7 @@ export default function OverviewPage() {
           <Stat label="Awaiting decision" value={open.length + ov.data.pending_messages} icon={<IconSparkles size={16} />} color="ai" hint={`${open.length} recommendations · ${ov.data.pending_messages} messages`} />
         </>}
       </SimpleGrid>
-      {(e.kind === "Tornado" || e.status === "active" || e.status === "restoring") && <div style={{ marginBottom: "var(--mantine-spacing-lg)" }}><StormImpactCard eventId={e.id} /></div>}
+      {(e.kind === "Tornado" || e.status === "active" || e.status === "restoring") && <div className="mb-m-lg"><StormImpactCard eventId={e.id} /></div>}
 
       <Grid gutter="lg">
         <Grid.Col span={{ base: 12, lg: 7.5 }}>
@@ -92,7 +92,7 @@ export default function OverviewPage() {
           </Card>
         </Grid.Col>
         <Grid.Col span={{ base: 12, lg: 4.5 }}>
-          <Card padding="sm" h="100%" style={{ display: "flex", flexDirection: "column" }}>
+          <Card padding="sm" h="100%" className="flex flex-col">
             <SectionTitle right={<Badge color="ai" variant="light">{open.length} open</Badge>}>
               <Group gap={6}><ThemeIcon size="sm" color="ai" variant="light"><IconSparkles size={14} /></ThemeIcon>What we need to do</Group>
             </SectionTitle>
@@ -122,10 +122,10 @@ export default function OverviewPage() {
                 <Table>
                   <Table.Thead><Table.Tr><Table.Th>Zone</Table.Th><Table.Th ta="right">Customers</Table.Th><Table.Th ta="right">Predicted out</Table.Th><Table.Th w={140} /><Table.Th>Main driver</Table.Th><Table.Th ta="right">Restore</Table.Th></Table.Tr></Table.Thead>
                   <Table.Tbody>{[...p.zones].sort((a, b) => b.pred - a.pred).slice(0, 8).map(z => (
-                    <Table.Tr key={z.id}><Table.Td>{z.short}</Table.Td><Table.Td ta="right" className="tabular">{fmt(z.customers)}</Table.Td>
-                      <Table.Td ta="right" className="tabular" fw={600} c={sevColor(z.pct)}>{fmt(z.pred)}</Table.Td>
+                    <Table.Tr key={z.id}><Table.Td>{z.short}</Table.Td><Table.Td ta="right" className="tabular-nums">{fmt(z.customers)}</Table.Td>
+                      <Table.Td ta="right" className="tabular-nums" fw={600} c={sevColor(z.pct)}>{fmt(z.pred)}</Table.Td>
                       <Table.Td><Progress value={z.pct * 125} color={sevColor(z.pct)} size="sm" /></Table.Td>
-                      <Table.Td><Text size="xs" c="dimmed">{z.driver}</Text></Table.Td><Table.Td ta="right" className="tabular">{z.eta_h} h</Table.Td></Table.Tr>))}
+                      <Table.Td><Text size="xs" c="dimmed">{z.driver}</Text></Table.Td><Table.Td ta="right" className="tabular-nums">{z.eta_h} h</Table.Td></Table.Tr>))}
                   </Table.Tbody>
                 </Table>
               ) : <Empty title="No prediction yet">{can("predictions.run") && <Button mt="sm" onClick={() => go(`/events/${e.id}?tab=prediction`)}>Run a prediction</Button>}</Empty>}
@@ -139,7 +139,7 @@ export default function OverviewPage() {
               {tasks.length ? tasks.slice(0, 7).map(t => (
                 <Group key={t.id} gap="sm" wrap="nowrap" align="flex-start">
                   <Checkbox checked={t.status === "done"} disabled={t.status === "done" || !can("tasks.manage")} onChange={() => doneTask.mutate(t.id)} mt={2} />
-                  <div style={{ flex: 1 }}>
+                  <div className="flex-1">
                     <Text size="sm" td={t.status === "done" ? "line-through" : undefined} c={t.status === "done" ? "dimmed" : undefined}>{t.title}</Text>
                     <Text size="xs" c="dimmed">{t.status === "done" ? `Done ${ago(t.done_at)}` : `Due ${dt(t.due_at)}`}</Text>
                   </div>

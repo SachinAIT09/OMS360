@@ -111,7 +111,7 @@ export default function LoginPage() {
               {waking && <Text ta="center" size="xs" c="#33405f">Waking up the server — this can take up to a minute after a quiet period…</Text>}
             </Stack>
           </form>
-          <Divider my="lg" label={<Text size="xs" fw={600} c="#33405f" style={{ letterSpacing: ".12em" }}>OR CONTINUE WITH</Text>} labelPosition="center" color="rgba(11,21,50,.18)" />
+          <Divider my="lg" label={<Text size="xs" fw={600} c="#33405f" className="tracking-[.12em]">OR CONTINUE WITH</Text>} labelPosition="center" color="rgba(11,21,50,.18)" />
           <Button fullWidth size="md" radius="md" variant="white" color="dark" leftSection={<MicrosoftLogo />} className="ms-btn"
             onClick={() => notifications.show({ title: "Microsoft sign-in", message: "Single sign-on with Microsoft Entra ID is configured per utility. Use your email and password in this sandbox." })}>
             Sign in with Microsoft
@@ -128,7 +128,7 @@ export default function LoginPage() {
             <Group justify="center" mt={6}>
               <Menu position="top" width={300} shadow="md">
                 <Menu.Target>
-                  <UnstyledButton style={{ color: "#33405f", fontSize: 12 }}><Group gap={2}>Other demo roles <IconChevronDown size={12} /></Group></UnstyledButton>
+                  <UnstyledButton className="text-[12px] text-[#33405f]"><Group gap={2}>Other demo roles <IconChevronDown size={12} /></Group></UnstyledButton>
                 </Menu.Target>
                 <Menu.Dropdown>
                   {accounts.data.filter(a => a.email !== DEMO_EMAIL).map(a => (

@@ -20,10 +20,10 @@ export function Stat({ label, value, hint, color, icon, progress, onClick }: {
   return (
     <Card padding="md" onClick={onClick} style={onClick ? { cursor: "pointer" } : undefined}>
       <Group justify="space-between" align="flex-start" wrap="nowrap">
-        <Text size="xs" c="dimmed" tt="uppercase" fw={600} style={{ letterSpacing: ".06em" }}>{label}</Text>
+        <Text size="xs" c="dimmed" tt="uppercase" fw={600} className="tracking-label">{label}</Text>
         {icon && <ThemeIcon variant="light" color={color ?? "brand"} size="md" radius="md">{icon}</ThemeIcon>}
       </Group>
-      <Text fz={26} fw={700} mt={4} c={color && color !== "brand" ? `${color}.5` : undefined} className="tabular" lh={1.2}>{value}</Text>
+      <Text fz={26} fw={700} mt={4} c={color && color !== "brand" ? `${color}.5` : undefined} className="tabular-nums" lh={1.2}>{value}</Text>
       {hint && <Text size="xs" c="dimmed" mt={4}>{hint}</Text>}
       {progress != null && <Progress value={Math.min(100, progress * 100)} size="sm" mt="sm" color={color ?? "brand"} />}
     </Card>

@@ -10,6 +10,8 @@ import { dt, dtShort, fmt } from "../lib/format";
 import { Empty, Loading } from "./common";
 import { AssetCell } from "./PredictionNetwork";
 import { TerritoryMap } from "./TerritoryMap";
+import { SEV } from "../lib/colors";
+import { LegendItem } from "./ui";
 
 const confColor = (c: number, bar: number) => (c >= bar ? "teal" : c >= bar - 15 ? "yellow" : "orange");
 
@@ -36,13 +38,13 @@ export function RegionEtrTable({ eventId, onPick }: { eventId: number; onPick: (
             <Table.Th>Last circuit expected</Table.Th><Table.Th ta="right">Confidence</Table.Th><Table.Th ta="right">Circuits published</Table.Th>
           </Table.Tr></Table.Thead>
           <Table.Tbody>{data.regions.map(r => (
-            <Table.Tr key={r.id} className="row-click" onClick={() => onPick(r.id)}>
+            <Table.Tr key={r.id} className="cursor-pointer" onClick={() => onPick(r.id)}>
               <Table.Td><Text size="sm" fw={600}>{r.name}</Text><Text size="xs" c="dimmed">{r.zones.join(", ")}</Text></Table.Td>
-              <Table.Td ta="right" className="tabular" fw={600}>{fmt(r.customers_out)}</Table.Td>
-              <Table.Td ta="right" className="tabular">{r.circuits_out}</Table.Td>
-              <Table.Td ta="right" className="tabular">{r.open_tickets}</Table.Td>
-              <Table.Td ta="right" className="tabular">{r.crews}</Table.Td>
-              <Table.Td ta="right" className="tabular" c={r.waiting ? "orange" : undefined}>{r.waiting ? <>{r.waiting} <Text span size="xs" c="dimmed">({r.backlog_h} job h)</Text></> : "—"}</Table.Td>
+              <Table.Td ta="right" className="tabular-nums" fw={600}>{fmt(r.customers_out)}</Table.Td>
+              <Table.Td ta="right" className="tabular-nums">{r.circuits_out}</Table.Td>
+              <Table.Td ta="right" className="tabular-nums">{r.open_tickets}</Table.Td>
+              <Table.Td ta="right" className="tabular-nums">{r.crews}</Table.Td>
+              <Table.Td ta="right" className="tabular-nums" c={r.waiting ? "orange" : undefined}>{r.waiting ? <>{r.waiting} <Text span size="xs" c="dimmed">({r.backlog_h} job h)</Text></> : "—"}</Table.Td>
               <Table.Td>{r.etr_at ? <Text size="sm" fw={600}>{dt(r.etr_at)}</Text> : <Text size="sm" c="dimmed">No outages</Text>}</Table.Td>
               <Table.Td><Confidence value={r.confidence} bar={data.publish_confidence} /></Table.Td>
               <Table.Td ta="right">{r.circuits_out ? <>{r.circuits_published} / {r.circuits_out}{r.circuits_ready > 0 && <Badge ml={6} size="xs" color="teal" variant="light">{r.circuits_ready} ready</Badge>}</> : "—"}</Table.Td>
@@ -105,9 +107,9 @@ export function CircuitEtrTable({ eventId, region, onRegion }: { eventId: number
                 <Table.Td><Text size="sm" fw={600} ff="monospace">{c.id}</Text></Table.Td>
                 <Table.Td><Text size="sm">{c.substation ?? "—"}</Text><Text size="xs" c="dimmed">{c.zone}</Text></Table.Td>
                 <Table.Td><Text size="sm">{c.region ?? "—"}</Text></Table.Td>
-                <Table.Td ta="right" className="tabular" fw={600}>{fmt(c.customers_out)}</Table.Td>
-                <Table.Td ta="right" className="tabular">{c.open_tickets}</Table.Td>
-                <Table.Td ta="right" className="tabular">{c.crews}</Table.Td>
+                <Table.Td ta="right" className="tabular-nums" fw={600}>{fmt(c.customers_out)}</Table.Td>
+                <Table.Td ta="right" className="tabular-nums">{c.open_tickets}</Table.Td>
+                <Table.Td ta="right" className="tabular-nums">{c.crews}</Table.Td>
                 <Table.Td>{c.etr_at ? <Text size="sm" fw={600}>{dt(c.etr_at)}</Text> : "—"}</Table.Td>
                 <Table.Td><Confidence value={c.confidence} bar={threshold} /></Table.Td>
                 <Table.Td ta="right"><AssetCell c={{ asset_hi: c.asset_hi ?? undefined, pct_poor: c.pct_poor ?? undefined }} /></Table.Td>
@@ -129,7 +131,7 @@ export function CircuitEtrTable({ eventId, region, onRegion }: { eventId: number
   );
 }
 
-const pinColor = (c: number, bar: number) => (c >= bar ? "#3ec46d" : c >= bar - 15 ? "#f5a623" : "#f07a2e");
+const pinColor = (c: number, bar: number) => (c >= bar ? SEV.ok : c >= bar - 15 ? SEV.watch : SEV.high);
 
 /** Substations with circuits out, coloured by their least certain circuit (circuit routes need the utility's GIS). */
 export function CircuitMap({ eventId, region }: { eventId: number; region: string | null }) {
@@ -142,7 +144,7 @@ export function CircuitMap({ eventId, region }: { eventId: number; region: strin
     return c ? {
       id: f.id, lines: f.route, color: pinColor(c.confidence, data.publish_confidence), weight: c.published ? 5 : 3.5,
       popup: <div><b>{c.id}</b> · {c.substation} · {c.zone}<br />{fmt(c.customers_out)} out · ETR {dtShort(c.etr_at)}<br />{c.confidence}% confidence{c.published ? " · published" : ""}</div>,
-    } : { id: f.id, lines: f.route, color: "#8a9aa5", weight: 1.5, opacity: 0.35 };
+    } : { id: f.id, lines: f.route, color: SEV.unknown, weight: 1.5, opacity: 0.35 };
   }).sort((a, b) => (a.opacity ? -1 : 0) - (b.opacity ? -1 : 0));
   const imported = routes.data?.counts.imported ?? 0;
   const subs = new Map<string, typeof data.circuits>();
@@ -162,8 +164,7 @@ export function CircuitMap({ eventId, region }: { eventId: number; region: strin
     <Card padding="sm" mb="lg">
       <TerritoryMap height={380} pins={pins} lines={lines} />
       <Group gap="md" mt={6}>
-        {[["#3ec46d", `all circuits ≥ ${data.publish_confidence}%`], ["#f5a623", "some within 15 pts"], ["#f07a2e", "low confidence"]].map(([c, l]) => (
-          <Group key={l} gap={4}><div style={{ width: 10, height: 10, borderRadius: 5, background: c }} /><Text size="xs" c="dimmed">{l}</Text></Group>))}
+        {[[SEV.ok, `all circuits ≥ ${data.publish_confidence}%`], [SEV.watch, "some within 15 pts"], [SEV.high, "low confidence"]].map(([c, l]) => <LegendItem key={l} color={c} label={l} shape="dot" />)}
         <Text size="xs" c="dimmed">Lines are circuits with outages (thicker = published); pins are substations. {imported
           ? `${imported} routes from the utility's GIS.` : "Routes are sandbox drawings until the utility's GIS feeder export is imported (Administration → Network)."}</Text>
       </Group>

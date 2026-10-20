@@ -40,14 +40,14 @@ export default function EventsPage() {
                 <Table.Th ta="right">Predicted</Table.Th><Table.Th ta="right">Tickets</Table.Th><Table.Th ta="right">Customers affected</Table.Th><Table.Th>Source</Table.Th><Table.Th>Created</Table.Th>
               </Table.Tr></Table.Thead>
               <Table.Tbody>{data.map(e => (
-                <Table.Tr key={e.id} className="row-click" onClick={() => { setEventId(e.id); go(`/events/${e.id}`); }}>
+                <Table.Tr key={e.id} className="cursor-pointer" onClick={() => { setEventId(e.id); go(`/events/${e.id}`); }}>
                   <Table.Td><Text fw={600} size="sm">{e.name}</Text><Text size="xs" c="dimmed">{e.kind}</Text></Table.Td>
                   <Table.Td><EventStatusBadge status={e.status} /></Table.Td>
                   <Table.Td>{intensity(e)}</Table.Td>
                   <Table.Td>{dt(e.landfall_at)}</Table.Td>
-                  <Table.Td ta="right" className="tabular">{fmt(e.predicted)}</Table.Td>
-                  <Table.Td ta="right" className="tabular">{fmt(e.tickets)}</Table.Td>
-                  <Table.Td ta="right" className="tabular">{fmt(e.customers_affected)}</Table.Td>
+                  <Table.Td ta="right" className="tabular-nums">{fmt(e.predicted)}</Table.Td>
+                  <Table.Td ta="right" className="tabular-nums">{fmt(e.tickets)}</Table.Td>
+                  <Table.Td ta="right" className="tabular-nums">{fmt(e.customers_affected)}</Table.Td>
                   <Table.Td><Badge variant="outline" color={e.source === "nhc" ? "cyan" : e.source === "nws" ? "red" : "gray"}>{e.source === "nhc" ? "NHC" : e.source === "nws" ? "NWS" : "Manual"}</Badge></Table.Td>
                   <Table.Td><Text size="sm">{date(e.created_at)}</Text></Table.Td>
                 </Table.Tr>))}

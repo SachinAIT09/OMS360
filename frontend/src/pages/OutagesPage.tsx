@@ -70,7 +70,7 @@ export default function OutagesPage() {
           <MultiSelect placeholder="Status" data={STATUSES.map(s => ({ value: s, label: label(s) }))} value={status} onChange={setStatus} clearable w={330} />
           <Select placeholder="Priority" data={[{ value: "critical", label: "Critical" }, { value: "high", label: "High" }, { value: "normal", label: "Normal" }]} value={priority} onChange={setPriority} clearable w={140} />
           <Select placeholder="Zone" data={(ref.data?.zones ?? []).map(z => ({ value: z.id, label: z.short }))} value={zone} onChange={setZone} clearable searchable w={180} />
-          <div style={{ flex: 1 }} />
+          <div className="flex-1" />
           <Badge variant="light" color="gray" size="lg" radius="sm" tt="none" fw={500}>{fmt(data?.total)} tickets</Badge>
           <SegmentedControl size="sm" radius="md" value={view} onChange={v => { setView(v); setParams(v === "map" ? { view: v } : {}); }}
             data={[
@@ -85,7 +85,7 @@ export default function OutagesPage() {
       ) : view === "map" ? (
         <Card padding="sm">
           <TerritoryMap height={620} facilities={ref.data?.facilities} pins={data.items.map(o => ({ id: o.id, lat: o.lat, lng: o.lng, color: STATUS_COLOR[o.status], onClick: () => setOpenId(o.id) }))} />
-          <Group gap="md" mt="xs">{STATUSES.slice(0, 5).map(s => <Group key={s} gap={4}><span className="pin" style={{ background: STATUS_COLOR[s], display: "inline-block" }} /><Text size="xs">{label(s)}</Text></Group>)}</Group>
+          <Group gap="md" mt="xs">{STATUSES.slice(0, 5).map(s => <Group key={s} gap={4}><span className="pin inline-block" style={{ background: STATUS_COLOR[s] }} /><Text size="xs">{label(s)}</Text></Group>)}</Group>
         </Card>
       ) : (
         <Card padding={0}>
@@ -96,13 +96,13 @@ export default function OutagesPage() {
                 {th("customers", "Customers", true)}<Table.Th>Crew</Table.Th><Table.Th>ETR</Table.Th>{th("reported_at", "Reported")}
               </Table.Tr></Table.Thead>
               <Table.Tbody>{data.items.map(o => (
-                <Table.Tr key={o.id} className="row-click" onClick={() => setOpenId(o.id)}>
+                <Table.Tr key={o.id} className="cursor-pointer" onClick={() => setOpenId(o.id)}>
                   <Table.Td><Text fw={600} size="sm">{o.number}</Text><Text size="xs" c="dimmed">{o.source}</Text></Table.Td>
                   <Table.Td><PriorityBadge priority={o.priority} size="sm" /></Table.Td>
                   <Table.Td><OutageStatusBadge status={o.status} size="sm" /></Table.Td>
                   <Table.Td><Text size="sm">{o.zone}</Text><Text size="xs" c="dimmed">{o.feeder_id}</Text></Table.Td>
                   <Table.Td><Text size="sm">{label(o.cause)}</Text><Text size="xs" c="dimmed">{label(o.damage)}</Text></Table.Td>
-                  <Table.Td ta="right" className="tabular" fw={500}>{fmt(o.customers)}</Table.Td>
+                  <Table.Td ta="right" className="tabular-nums" fw={500}>{fmt(o.customers)}</Table.Td>
                   <Table.Td>{o.crew ? <Badge variant="outline" color="blue">{o.crew.code}</Badge> : <Text size="xs" c="dimmed">Unassigned</Text>}</Table.Td>
                   <Table.Td>{o.status === "restored" ? <Text size="sm" c="teal">Restored {dtShort(o.restored_at)}</Text> :
                     <><Text size="sm">{dtShort(o.etr_at)}</Text><Text size="xs" c="dimmed">{o.etr_committed ? (o.etr_override ? "manual" : "committed") : "AI estimate"}{o.etr_confidence != null && ` · ${o.etr_confidence}%`}</Text></>}</Table.Td>

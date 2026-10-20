@@ -108,7 +108,7 @@ function Roster({ initialQ }: { initialQ: string }) {
           <Card padding="sm">
             <TerritoryMap height={560} pins={(data ?? []).filter(c => c.status !== "released").slice(0, 400).map(c => ({ id: c.id, lat: c.lat, lng: c.lng, color: CREW_COLOR[c.status] ?? "#8a96c0",
               popup: <div><b>{c.code}</b> · {c.company}<br />{label(c.kind)} crew, {c.size} workers<br />{label(c.status)}{c.current ? ` — ${c.current.number}` : ""}</div> }))} />
-            <Group gap="md" mt="xs">{Object.entries(CREW_COLOR).map(([s, col]) => <Group key={s} gap={4}><span className="pin" style={{ background: col, display: "inline-block" }} /><Text size="xs">{label(s)}</Text></Group>)}</Group>
+            <Group gap="md" mt="xs">{Object.entries(CREW_COLOR).map(([s, col]) => <Group key={s} gap={4}><span className="pin inline-block" style={{ background: col }} /><Text size="xs">{label(s)}</Text></Group>)}</Group>
           </Card>
         </Grid.Col>
       </Grid>
@@ -145,7 +145,7 @@ function MutualAidTab() {
             <Table.Tbody>{data.map(r => (
               <Table.Tr key={r.id}>
                 <Table.Td><Text size="sm" fw={600}>{r.company}</Text><Text size="xs" c="dimmed">{r.origin}</Text></Table.Td>
-                <Table.Td>{label(r.kind)}</Table.Td><Table.Td ta="right" className="tabular">{fmt(r.workers)}</Table.Td>
+                <Table.Td>{label(r.kind)}</Table.Td><Table.Td ta="right" className="tabular-nums">{fmt(r.workers)}</Table.Td>
                 <Table.Td><MutualAidBadge status={r.status} /></Table.Td>
                 <Table.Td>{r.status === "arrived" ? `Arrived ${dt(r.arrived_at)}` : dt(r.eta)}</Table.Td>
                 <Table.Td><Text size="sm">{dt(r.requested_at)}</Text><Text size="xs" c="dimmed">{r.requested_by}</Text></Table.Td>
