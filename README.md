@@ -60,10 +60,10 @@ npm run e2e      # build the UI, start the API on a fresh Oklahoma database and 
 API documentation: http://127.0.0.1:8000/docs
 
 ### Sign in
-Demo logins (shown on the sign-in page): **steve@powerconnect.ai / admin** and **admin@gmail.com / admin@123** (Administrator, full access).
+Demo logins (not shown on the sign-in page): **steve@powerconnect.ai / admin** and **admin@gmail.com / admin@123** (Administrator, full access).
 These two accounts are protected: they can't be deactivated, demoted or re-passworded from Administration → Users, and every server start restores them.
 
-The utility's role accounts below are under *Other demo roles* on the sign-in page (`…@prairieskypower.example` in Oklahoma, `…@bayviewpw.example` in Tampa); their password is `oms360`.
+The utility's role accounts below (`…@prairieskypower.example` in Oklahoma, `…@bayviewpw.example` in Tampa) are listed by `GET /api/auth/sandbox-accounts`; their password is `oms360`.
 
 | Person | Role | Can do |
 |---|---|---|

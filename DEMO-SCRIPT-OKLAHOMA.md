@@ -6,7 +6,7 @@
 - Open **http://127.0.0.1:8000/outage-map** in a second tab. This is the page customers see.
 - Logins:
   - Administrators: **steve@powerconnect.ai / admin** or **admin@gmail.com / admin@123**.
-  - Role accounts are under *Other demo roles* on the sign-in page, password `oms360`.
+  - Role accounts (see the README) use the password `oms360`. Logins are no longer shown on the sign-in page.
 
 **Story**
 - Prairie Sky Power is a fictional electric utility serving about 920,000 customers across Oklahoma. It has five operating regions: Northeast (Tulsa), Central (OKC metro), Southwest, Northwest and Southeast.

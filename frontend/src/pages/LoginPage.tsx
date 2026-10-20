@@ -1,20 +1,15 @@
 import { useState } from "react";
 import { Navigate, useLocation, useNavigate } from "react-router-dom";
-import { Alert, Anchor, Badge, Box, Button, Divider, Group, Image, Menu, PasswordInput, SimpleGrid, Stack, Text, TextInput, UnstyledButton } from "@mantine/core";
+import { Alert, Anchor, Badge, Box, Button, Divider, Group, Image, PasswordInput, SimpleGrid, Stack, Text, TextInput } from "@mantine/core";
 import { useForm } from "@mantine/form";
 import { notifications } from "@mantine/notifications";
 import { useQuery } from "@tanstack/react-query";
-import { IconAlertTriangle, IconArrowUp, IconBolt, IconChevronDown, IconLock, IconLogin2, IconPlug, IconSparkles } from "@tabler/icons-react";
+import { IconAlertTriangle, IconArrowUp, IconBolt, IconLock, IconLogin2, IconPlug, IconSparkles } from "@tabler/icons-react";
 import { api } from "../api/client";
 import { useAuth } from "../auth/AuthContext";
 import { PROFILE } from "../lib/profile";
 
 const LOGO = "https://d7umqicpi7263.cloudfront.net/img/product/f93e9a80-bf37-4444-9934-14f54d16daef.com/3b20a3af2ab95662337f13eca910ef71";
-const DEMO_EMAIL = "steve@powerconnect.ai";
-const DEMO_PASSWORD = "admin";
-// passwords of the demo admins (backend DEMO_ADMINS); every seeded role account of the territory's utility uses ROLE_PASSWORD
-const DEMO_PASSWORDS: Record<string, string> = { [DEMO_EMAIL]: DEMO_PASSWORD, "admin@gmail.com": "admin@123" };
-const ROLE_PASSWORD = "oms360";
 
 const FEATURES = [
   { icon: IconBolt, label: "Real-time AI predictions", color: "linear-gradient(135deg,#ffb547,#ff8a1f)" },
@@ -43,8 +38,8 @@ export default function LoginPage() {
     validate: { email: (v: string) => (/\S+@\S+/.test(v) ? null : "Enter your work email"), password: (v: string) => (v ? null : "Enter your password") },
   });
   const [waking, setWaking] = useState(false);
-  // also wakes a sleeping free-tier server as soon as the page opens
-  const accounts = useQuery({ queryKey: ["sandbox"], queryFn: () => api.get<{ email: string; name: string; role: string; title: string }[]>("/auth/sandbox-accounts"), retry: 6 });
+  // wakes a sleeping free-tier server as soon as the page opens, so the first sign-in doesn't wait for it
+  useQuery({ queryKey: ["wake"], queryFn: () => api.get("/health"), retry: 6 });
   if (user) return <Navigate to={(loc.state as { from?: string })?.from ?? "/"} replace />;
 
   const submit = form.onSubmit(async v => {
@@ -116,31 +111,6 @@ export default function LoginPage() {
             onClick={() => notifications.show({ title: "Microsoft sign-in", message: "Single sign-on with Microsoft Entra ID is configured per utility. Use your email and password in this sandbox." })}>
             Sign in with Microsoft
           </Button>
-          <Divider my="lg" color="rgba(11,21,50,.12)" />
-          <Group justify="center" gap={6}><Image src={LOGO} h={26} w="auto" fit="contain" alt="" /></Group>
-          <Text ta="center" size="sm" c="#33405f" mt={6}>
-            Demo: <b>{DEMO_EMAIL}</b> / <b>{DEMO_PASSWORD}</b>
-          </Text>
-          <Text ta="center" size="sm" c="#33405f">
-            Admin: <b>admin@gmail.com</b> / <b>admin@123</b>
-          </Text>
-          {!!accounts.data?.length && (
-            <Group justify="center" mt={6}>
-              <Menu position="top" width={300} shadow="md">
-                <Menu.Target>
-                  <UnstyledButton className="text-[12px] text-[#33405f]"><Group gap={2}>Other demo roles <IconChevronDown size={12} /></Group></UnstyledButton>
-                </Menu.Target>
-                <Menu.Dropdown>
-                  {accounts.data.filter(a => a.email !== DEMO_EMAIL).map(a => (
-                    <Menu.Item key={a.email} onClick={() => form.setValues({ email: a.email, password: DEMO_PASSWORDS[a.email] ?? ROLE_PASSWORD })}
-                      rightSection={<Badge size="xs" variant="light">{a.role}</Badge>}>
-                      <Text size="sm">{a.name}</Text><Text size="xs" c="dimmed">{a.title}</Text>
-                    </Menu.Item>
-                  ))}
-                </Menu.Dropdown>
-              </Menu>
-            </Group>
-          )}
         </div>
       </Group>
       <Text className="login-foot">OMS 360 · <Anchor href="/outage-map" c="inherit" size="xs" underline="always">Public outage map</Anchor> · demo</Text>

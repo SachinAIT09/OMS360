@@ -4,7 +4,7 @@
 - Stop the server, delete `backend/data/oms360.sqlite` for clean data, then run `npm start` and open **http://127.0.0.1:8000** in Chrome or Edge.
 - Open **http://127.0.0.1:8000/outage-map** in a second tab. This is the public page customers see.
 - You need internet for the map tiles, live weather and the NHC feed.
-- Logins: **steve@powerconnect.ai / admin** or **admin@gmail.com / admin@123** (administrators). Role accounts are under *Other demo roles* on the sign-in page.
+- Logins: **steve@powerconnect.ai / admin** or **admin@gmail.com / admin@123** (administrators). Role accounts (see the README) use the password `oms360`. Logins are no longer shown on the sign-in page.
 
 **Story.** Bayview Power & Water serves 692,000 electric and 193,000 water customers around Tampa Bay. Two things are happening at once:
 - **Hurricane Kyle** is forecast to make landfall in 72 hours as a Category 3. The parent company's storm model has issued a forecast for it.
