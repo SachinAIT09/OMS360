@@ -123,8 +123,11 @@ def plan(budget: float = 20e6, region: str | None = None, kind: str | None = Non
 
 
 @router.get("/assets/top")
-def top(n: int = 25, region: str | None = None, kind: str | None = None, s: Session = Depends(get_session), _: User = Depends(current_user)):
-    return svc.top_risk(s, min(200, max(1, n)), region, _kind(kind))
+def top(n: int = 25, region: str | None = None, kind: str | None = None, condition: str | None = None, s: Session = Depends(get_session),
+        _: User = Depends(current_user)):
+    if condition and condition not in svc.CONDITIONS:
+        raise HTTPException(422, f"condition must be one of {', '.join(svc.CONDITIONS)}")
+    return svc.top_risk(s, min(200, max(1, n)), region, _kind(kind), condition)
 
 
 @router.get("/assets/search")

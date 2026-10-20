@@ -4,7 +4,7 @@ import { useEffect, useMemo, useState } from "react";
 import { Link, useSearchParams } from "react-router-dom";
 import { CircleMarker, Tooltip as LTooltip } from "react-leaflet";
 import {
-  Anchor, Badge, Breadcrumbs, Button, Card, Chip, Drawer, Grid, Group, Pagination, ScrollArea, SegmentedControl, SimpleGrid, Stack, Table, Text, Tooltip,
+  Alert, Anchor, Badge, Breadcrumbs, Button, Card, Chip, Drawer, Grid, Group, Pagination, ScrollArea, SegmentedControl, SimpleGrid, Stack, Table, Text, Tooltip,
 } from "@mantine/core";
 import { useMediaQuery } from "@mantine/hooks";
 import { IconArrowUp, IconExternalLink, IconRefresh } from "@tabler/icons-react";
@@ -16,7 +16,7 @@ import type {
 import { useCurrentEvent } from "../auth/EventContext";
 import { AssetDetailView } from "../components/AssetDetail";
 import { AgeText, CONDITION_HEX, HealthBadge, KIND_LABEL, KIND_PLURAL, ModelNote, hiColor } from "../components/assetUi";
-import { Empty, Loading, PageHeader, Stat } from "../components/common";
+import { Empty, ErrorState, Loading, PageHeader, Stat } from "../components/common";
 import { EF_COLOR, TerritoryMap, type MapArea, type MapLine, type MapPin } from "../components/TerritoryMap";
 import { fmt, money, pct, sevColor } from "../lib/format";
 import { PROFILE } from "../lib/profile";
@@ -174,10 +174,18 @@ export default function NetworkExplorerPage() {
         </Grid.Col>
         <Grid.Col span={{ base: 12, lg: 5 }}>
           <ScrollArea.Autosize mah={wide ? 700 : undefined} type="auto">
+            {(summary.error || circuits.error) && <ErrorState error={summary.error ?? circuits.error} />}
+            {region && geo.data && !geo.data.regions.some(r => r.id === region) && (
+              <Alert color="orange" mb="md" title="Region not found">There is no region "{region}" in this territory.{" "}
+                <Anchor component="button" onClick={() => select({ region: null })}>Show the whole territory</Anchor></Alert>)}
+            {circuit && circuits.data && !healthBy.has(circuit) && (
+              <Alert color="orange" mb="md" title="Circuit not found">There is no circuit "{circuit}" with equipment records.{" "}
+                <Anchor component="button" onClick={() => select({ circuit: null })}>Go up a level</Anchor></Alert>)}
+            {sub && subDetail.error && <Alert color="orange" mb="md" title="Substation not found">{subDetail.error.message}</Alert>}
             {level === "state" && <StatePanel summary={summary.data} impact={impact.data} event={event} onRegion={id => select({ region: id })} />}
             {level === "region" && <RegionPanel summary={summary.data} subs={subs.data} circuits={circuits.data} predBy={predBy}
               onSub={id => select({ region, sub: id })} onCircuit={c => select({ region, sub: c.substation_id, circuit: c.id })} />}
-            {level === "substation" && <SubstationPanel d={subDetail.data} predBy={predBy} onCircuit={id => select({ region, sub, circuit: id })}
+            {level === "substation" && <SubstationPanel d={subDetail.data} failed={!!subDetail.error} predBy={predBy} onCircuit={id => select({ region, sub, circuit: id })}
               onAsset={id => select({ region, sub, asset: id })} />}
             {level === "circuit" && circuit && <CircuitPanel key={circuit} id={circuit} pred={predBy.get(circuit)} outages={(outages.data?.items ?? []).filter(o => o.feeder_id === circuit)}
               event={detail.data} onAsset={id => select({ region, sub, circuit, asset: id })} />}
@@ -186,6 +194,7 @@ export default function NetworkExplorerPage() {
       </Grid>
 
       <Drawer opened={!!asset} onClose={() => select({ region, sub, circuit, asset: null })} position="right" size="xl"
+        closeButtonProps={{ "aria-label": "Close unit details" }}
         title={<Group gap="xs"><Text fw={700}>Unit {asset}</Text>{asset && <Anchor component={Link} to={`/asset/${encodeURIComponent(asset)}`} fz="sm">
           Open full record <IconExternalLink size={12} /></Anchor>}</Group>}>
         {asset && <AssetDetailView id={asset} compact />}
@@ -309,7 +318,9 @@ function CircuitList({ title, rows, predBy, onCircuit }: { title: string; rows: 
   );
 }
 
-function SubstationPanel({ d, predBy, onCircuit, onAsset }: { d?: SubstationDetail; predBy: Map<string, PredCircuit>; onCircuit: (id: string) => void; onAsset: (id: string) => void }) {
+function SubstationPanel({ d, failed, predBy, onCircuit, onAsset }: { d?: SubstationDetail; failed?: boolean; predBy: Map<string, PredCircuit>; onCircuit: (id: string) => void;
+  onAsset: (id: string) => void }) {
+  if (failed) return null;
   if (!d) return <Loading />;
   return (
     <Stack gap="md">
@@ -333,7 +344,8 @@ function SubstationPanel({ d, predBy, onCircuit, onAsset }: { d?: SubstationDeta
 function CircuitPanel({ id, pred, outages, event, onAsset }: { id: string; pred?: PredCircuit; outages: Outage[]; event?: StormEvent | null; onAsset: (id: string) => void }) {
   const [kind, setKind] = useState<AssetKind>("dist_transformer");
   const [page, setPage] = useState(1);
-  const { data: c } = useGet<CircuitHealthDetail>(`/assets/circuits/${id}?kind=${kind}&limit=${PAGE}&offset=${(page - 1) * PAGE}`);
+  const { data: c, error } = useGet<CircuitHealthDetail>(`/assets/circuits/${id}?kind=${kind}&limit=${PAGE}&offset=${(page - 1) * PAGE}`);
+  if (error) return null;  // the page shows "Circuit not found"
   if (!c) return <Loading />;
   if (c.id !== id) return <Loading />;
   return (

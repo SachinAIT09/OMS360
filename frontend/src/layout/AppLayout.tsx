@@ -5,7 +5,7 @@ import {
   Select, Stack, Text, Tooltip, UnstyledButton, useComputedColorScheme, useMantineColorScheme,
 } from "@mantine/core";
 import { useDisclosure, useMediaQuery } from "@mantine/hooks";
-import { Spotlight, type SpotlightActionData } from "@mantine/spotlight";
+import { Spotlight, spotlight, type SpotlightActionData } from "@mantine/spotlight";
 import {
   IconActivityHeartbeat, IconBell, IconHierarchy3, IconBolt, IconBrain, IconBroadcast, IconChartBar, IconCloudStorm, IconExternalLink, IconLayoutDashboard, IconLogout, IconMoon,
   IconSearch, IconSettings, IconSun, IconTool, IconTruck,
@@ -175,6 +175,9 @@ function SearchButton() {
   }));
   return (
     <>
+      <Tooltip label="Search tickets, circuits, substations, assets… (Ctrl+K)">
+        <ActionIcon variant="subtle" size="lg" onClick={spotlight.open} aria-label="Search"><IconSearch size={18} /></ActionIcon>
+      </Tooltip>
       <Spotlight actions={q.trim().length >= 2 ? results : pages} query={q} onQueryChange={setQ} shortcut={["mod + K", "/"]} filter={(_, a) => a}
         nothingFound={isFetching ? "Searching…" : "Nothing found"} searchProps={{ leftSection: <IconSearch size={18} />, placeholder: "Ticket, circuit, substation, asset ID, crew code, event…" }} />
     </>

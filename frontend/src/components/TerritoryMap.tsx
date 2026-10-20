@@ -98,8 +98,9 @@ function FitTo({ points }: { points: [number, number][] }) {
   const map = useMap();
   const key = points.length + ":" + points.slice(0, 3).flat().join(",") + points.slice(-1).flat().join(",");
   useEffect(() => {
-    if (points.length === 1) map.setView(points[0], Math.max(map.getZoom(), 13));
-    else map.fitBounds(L.latLngBounds(points), { padding: [24, 24], maxZoom: 14 });
+    // No animation: a map unmounted mid-animation (the user navigates away) makes Leaflet throw "_leaflet_pos".
+    if (points.length === 1) map.setView(points[0], Math.max(map.getZoom(), 13), { animate: false });
+    else map.fitBounds(L.latLngBounds(points), { padding: [24, 24], maxZoom: 14, animate: false });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [key]);
   return null;

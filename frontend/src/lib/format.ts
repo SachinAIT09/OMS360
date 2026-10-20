@@ -16,7 +16,9 @@ export const fmt = (n: number | null | undefined) => (n == null ? "—" : Math.r
 export const pct = (n: number | null | undefined, d = 0) => (n == null ? "—" : `${(n * 100).toFixed(d)}%`);
 export const dt = (iso: string | null | undefined) => (iso ? local(iso).format("ddd MMM D, h:mm A") : "—");
 export const dtShort = (iso: string | null | undefined) => (iso ? local(iso).format("ddd h:mm A") : "—");
-export const date = (iso: string | null | undefined) => (iso ? local(iso).format("MMM D, YYYY") : "—");
+/** A calendar date. Date-only values ("2026-10-20") are shown as is — converting them from UTC midnight would land on the previous day. */
+export const date = (iso: string | null | undefined) =>
+  !iso ? "—" : /^\d{4}-\d{2}-\d{2}$/.test(iso) ? dayjs(iso, "YYYY-MM-DD").format("MMM D, YYYY") : local(iso).format("MMM D, YYYY");
 export const time = (iso: string | null | undefined) => (iso ? local(iso).format("h:mm A") : "—");
 export const ago = (iso: string | null | undefined) => (iso ? dayjs(iso).fromNow() : "—");
 export const hoursUntil = (iso: string | null | undefined) => (iso ? dayjs(iso).diff(dayjs(), "hour", true) : null);

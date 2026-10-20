@@ -454,7 +454,7 @@ def _predict_tornado(s: Session, event: StormEvent, zones: list[Zone], category:
                           "customers_in_path": sum(c["customers"] for c in hit), "xfmrs_in_path": sum(c.get("xfmrs", 0) for c in hit),
                           "start_at": p["at"][0] if p.get("at") else None})
     return {
-        "kind": "tornado", "scenario": f"{fc.source} forecast + EF{ef}" if fc else f"EF{ef}" + (" (surveyed paths)" if touched_down else " planning paths"),
+        "kind": "tornado", "scenario": f"{fc.source} forecast + EF{ef}" if fc else f"EF{ef} · " + ("surveyed paths" if touched_down else "planning paths"),
         "rain_in": None, "forecast": {"id": fc.id, "source": fc.source, "issued_at": fc.issued_at.isoformat()} if fc else None,
         "category": ef, "ef": ef, "wind_mph": EF_WIND[ef], "surge": None, "paths": path_rows,
         "circuits_in_path": len(in_path), "customers_in_path": sum(c["customers"] for c in in_path),

@@ -38,7 +38,7 @@ def test_import_warning_and_replace_with_survey(client, ops_h):
     assert r["category"] == 2 and all(p["observed"] for p in r["track"])
     surveyed = client.get(f"/api/events/{e['id']}", headers=ops_h).json()["prediction"]["result"]
     hit = {c["zone_id"] for c in surveyed["circuits"] if c["in_path"]}
-    assert hit == {"law"} and "(surveyed paths)" in surveyed["scenario"]
+    assert hit == {"law"} and "surveyed paths" in surveyed["scenario"]
     assert client.put(f"/api/events/{e['id']}/paths", headers=ops_h, json={"csv": "lat,lng\n1,2"}).status_code == 422
     kyle_like = client.post("/api/events", headers=ops_h, json={"name": "Ice", "kind": "Winter Storm"}).json()
     assert client.put(f"/api/events/{kyle_like['id']}/paths", headers=ops_h, json={"csv": csv}).status_code == 409

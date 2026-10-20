@@ -5,8 +5,13 @@ OMS360 is an outage management application for utilities facing major storms —
 - **Storm events** with a real lifecycle: Monitoring → Preparing → Active → Restoring → Closed. Events can be imported live from the NHC or created by hand.
 - **Impact prediction**: predicted outages by region, zone and circuit (including the 80/20 view), critical facilities, crews needed and materials. Tornadoes are
   modelled circuit by circuit against each damage path (EF rating, width, track), so circuits in the path are planned as rebuilds.
-- **Asset health**: age, condition, health index, 12-month failure probability and risk for substation power transformers and distribution transformers,
-  by region → circuit → unit. Transformer health feeds each circuit's predicted outages, live and predicted restoration times and transformer stock needs.
+- **Network explorer**: drill from the state to a region, substation, circuit and single unit on one map (layers, legend, state outline,
+  approximate region areas, storm paths, equipment coloured by condition), with breadcrumbs and shareable URLs.
+- **Asset health**: age, condition, health index, 12-month failure probability and risk for substation transformers, distribution transformers,
+  feeder breakers, reclosers and poles — by region → substation → circuit → unit. Each unit has a record with its inspection / test history,
+  predicted storm exposure (kept apart from damage confirmed by field crews), recommended actions and work orders. Missing install years or
+  inspections are shown as unknown, never filled in. The health model is **illustrative** (adjustable weights, documented on the page) until the
+  utility's engineers validate it. Transformer health feeds circuit predictions, live and predicted restoration times and stock needs.
   A **replacement planner** turns a budget into a ranked replacement list (customer risk removed per dollar) with a 5- and 10-year outlook.
 - **NWS tornado warnings**: track an active warning as an event (planning damage path projected along the storm motion), then replace it with the NWS
   damage survey after the storm; the prediction re-runs on the surveyed paths.
@@ -39,7 +44,7 @@ register with Asset health → *Import asset register* (CSV), or `POST /api/admi
 |---|---|
 | Frontend | React 18, TypeScript, Vite, Mantine 7 (UI), TanStack Query, React Router, Leaflet |
 | Backend | Python 3.11+ (tested on 3.14), FastAPI, SQLAlchemy 2 |
-| Database | SQLite per territory in `backend/data/`, created and seeded on first start (first Oklahoma start takes ~20 s to build the asset register) |
+| Database | SQLite per territory in `backend/data/`, created and seeded on first start (first Oklahoma start takes ~50 s to build the ~106k-unit asset register) |
 | Live updates | Server-sent events (`/api/stream`) |
 | External data | NHC CurrentStorms feed, NWS active alerts (api.weather.gov), Open-Meteo or OpenWeather weather, Esri/OpenStreetMap map tiles |
 
@@ -49,7 +54,8 @@ From the project root:
 npm install      # frontend packages + Python virtual environment for the backend
 npm run dev      # API on :8000 + UI on http://localhost:5173 (hot reload)
 npm start        # build the UI, then serve everything at http://127.0.0.1:8000
-npm test         # backend tests (Tampa suite, then Oklahoma suite) + TypeScript check
+npm test         # backend tests (Tampa suite, then Oklahoma suite), ESLint, TypeScript check, Vitest unit tests
+npm run e2e      # build the UI, start the API on a fresh Oklahoma database and run the Playwright browser journeys
 ```
 API documentation: http://127.0.0.1:8000/docs
 

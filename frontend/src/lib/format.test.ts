@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { dt, impactWord, intensity, isRain, isTornado, pct, scale, scenario, setTimeZone } from "./format";
+import { date, dt, impactWord, intensity, isRain, isTornado, pct, scale, scenario, setTimeZone } from "./format";
 
 const tornado = { kind: "Tornado", category: 4, max_wind_mph: 175 };
 const hurricane = { kind: "Hurricane", category: 3, max_wind_mph: 120 };
@@ -31,6 +31,11 @@ describe("formatting", () => {
     expect(dt("2026-10-20T02:00:00Z")).toBe("Mon Oct 19, 9:00 PM");
     setTimeZone("America/New_York");
     expect(dt("2026-10-20T02:00:00Z")).toBe("Mon Oct 19, 10:00 PM");
+  });
+  it("shows date-only values on their own day in every time zone", () => {
+    setTimeZone("America/Chicago");
+    expect(date("2026-10-20")).toBe("Oct 20, 2026");
+    expect(date("2026-10-20T03:00:00Z")).toBe("Oct 19, 2026");  // a moment in time is converted
   });
   it("formats percentages and handles missing values", () => {
     expect(pct(0.1234, 1)).toBe("12.3%");

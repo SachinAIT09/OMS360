@@ -12,7 +12,9 @@ def test_age_matches_an_independent_calculation(client, ops_h):
         a = s.query(Asset).filter(Asset.install_year.is_not(None), Asset.kind == "dist_transformer").first()
         expected = date.today().year - a.install_year  # independent of the service code
     d = client.get(f"/api/assets/item/{a.id}", headers=ops_h).json()
-    assert d["age"] == expected and d["age_reference"] == date.today().isoformat()
+    from app.fmt import local
+    from app.models import utcnow
+    assert d["age"] == expected and d["age_reference"] == local(utcnow()).date().isoformat()
 
 
 def test_every_equipment_type_and_missing_data_are_represented(client, ops_h):

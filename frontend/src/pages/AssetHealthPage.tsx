@@ -12,7 +12,7 @@ import type { Asset, AssetKind, AssetSummary, CircuitHealth, HealthModel, Replac
 import { useAuth } from "../auth/AuthContext";
 import { WorkOrders } from "../components/AssetDetail";
 import { AgeText, AssetLink, AssetTable, BandBar, HealthBadge, KIND_LABEL, KIND_PLURAL, ModelNote, hiColor } from "../components/assetUi";
-import { Loading, PageHeader, SectionTitle, Stat } from "../components/common";
+import { ErrorState, Loading, PageHeader, SectionTitle, Stat } from "../components/common";
 import { TerritoryMap } from "../components/TerritoryMap";
 import { date, fmt, money, pct } from "../lib/format";
 import { PROFILE } from "../lib/profile";
@@ -25,8 +25,9 @@ export default function AssetHealthPage() {
   const { can } = useAuth();
   const go = useNavigate();
   const [importOpen, importCtl] = useDisclosure(false);
-  const { data: sm, isFetching } = useGet<AssetSummary>(`/assets/summary${region ? `?region=${region}` : ""}`);
+  const { data: sm, isFetching, error } = useGet<AssetSummary>(`/assets/summary${region ? `?region=${region}` : ""}`);
   const all = useGet<AssetSummary>("/assets/summary");  // the region table always lists every region
+  if (error || all.error) return <ErrorState error={error ?? all.error} />;
   if (!sm || !all.data) return <Loading />;
   const d = sm.distribution, p = sm.power;
   const regionName = all.data.regions.find(r => r.id === region)?.name;
@@ -120,12 +121,13 @@ export default function AssetHealthPage() {
 type SortKey = "risk_all" | "mean_hi" | "pct_poor" | "mean_age" | "expected_failures";
 
 function CircuitsTab({ region, regionName }: { region: string | null; regionName?: string }) {
-  const { data } = useGet<CircuitHealth[]>(`/assets/circuits${region ? `?region=${region}` : ""}`);
+  const { data, error } = useGet<CircuitHealth[]>(`/assets/circuits${region ? `?region=${region}` : ""}`);
   const routes = useRoutes();
   const geo = useGeo();
   const go = useNavigate();
   const [sort, setSort] = useState<SortKey>("risk_all");
   const [limit, setLimit] = useState(25);
+  if (error) return <ErrorState error={error} />;
   if (!data) return <Loading />;
   const open = (c: CircuitHealth) => go(`/network?region=${c.region_id ?? ""}&sub=${c.substation_id ?? ""}&circuit=${c.id}`);
   const rows = [...data].sort((a, b) => (sort === "mean_hi" ? a.mean_hi - b.mean_hi : (b[sort] as number) - (a[sort] as number)));

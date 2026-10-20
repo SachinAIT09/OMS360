@@ -38,8 +38,10 @@ def score(a, customers: float, critical: bool, year: int | None = None) -> None:
 
 
 def reference_date() -> str:
-    """Ages are whole years from the install year to this date (install records carry the year only)."""
-    return utcnow().date().isoformat()
+    """Ages are whole years from the install year to this date — today in the territory's time zone (install records carry
+    the year only)."""
+    from ..fmt import local
+    return local(utcnow()).date().isoformat()
 
 
 # ---------------------------------------------------------------- sandbox register
@@ -340,44 +342,74 @@ def circuit_health(s: Session, region: str | None = None, zone: str | None = Non
     return out
 
 
-def region_health(s: Session, kind: str = DIST) -> list[dict]:
+def _combine(rows: list[dict]) -> dict:
+    """Merge per-kind rollups into one (sums, and unit-weighted means)."""
+    n = sum(r["units"] for r in rows)
+    if not n:
+        return _row((0, None, None, None, 0, 0, 0, 0, 0, 0, 0, 0, 0))
+    dated = sum(r.get("_dated", r["units"] - r["unknown"]) for r in rows)
+    scored = sum(r["units"] - r["unknown"] for r in rows)
+    out = {"xfmrs": n, "units": n, "oldest": max(r["oldest"] for r in rows),
+           "mean_age": round(sum(r["mean_age"] * r.get("_dated", r["units"] - r["unknown"]) for r in rows) / dated, 1) if dated else 0,
+           "mean_hi": round(sum(r["mean_hi"] * (r["units"] - r["unknown"]) for r in rows) / scored, 1) if scored else 0}
+    for k in ("poor", "critical", "unknown", "damaged", "replacement_capex"):
+        out[k] = sum(r[k] for r in rows)
+    out["expected_failures"] = round(sum(r["expected_failures"] for r in rows), 1)
+    out["risk"] = round(sum(r["risk"] for r in rows), 1)
+    out["pct_poor"] = round(out["poor"] / n, 4)
+    out["pct_over_life"] = round(sum(r["pct_over_life"] * r.get("_dated", r["units"] - r["unknown"]) for r in rows) / dated, 4) if dated else 0
+    return out
+
+
+def _by_region_kind(s: Session, year: int) -> dict[tuple, dict]:
+    """(region_id, kind) → rollup, in one grouped query."""
+    out = {}
+    for rid, kind, *vals in s.execute(select(Zone.region_id, Asset.kind, *_aggregates(year)).select_from(Asset)
+                                      .join(Zone, Zone.id == Asset.zone_id).group_by(Zone.region_id, Asset.kind)).all():
+        r = _row(vals)
+        r["_dated"] = vals[-1] or 0
+        out[(rid, kind)] = r
+    return out
+
+
+def region_health(s: Session, kind: str = DIST, cells: dict | None = None) -> list[dict]:
     year = utcnow().year
     regions = {r.id: r.name for r in s.scalars(select(Region)).all()}
+    cells = cells if cells is not None else _by_region_kind(s, year)
+    circuits = dict(s.execute(select(Zone.region_id, func.count(Feeder.id)).join(Zone, Zone.id == Feeder.zone_id).group_by(Zone.region_id)).all())
+    subs = dict(s.execute(select(Zone.region_id, func.count(Substation.id)).join(Zone, Zone.id == Substation.zone_id).group_by(Zone.region_id)).all())
     out = []
-    for rid, *vals in s.execute(select(Zone.region_id, *_aggregates(year)).select_from(Asset).join(Zone, Zone.id == Asset.zone_id)
-                                .where(Asset.kind == kind).group_by(Zone.region_id)).all():
-        r = _row(vals)
-        circuits = s.scalar(select(func.count(Feeder.id)).join(Zone, Zone.id == Feeder.zone_id).where(Zone.region_id == rid))
-        substations_n = s.scalar(select(func.count(Substation.id)).join(Zone, Zone.id == Substation.zone_id).where(Zone.region_id == rid))
-        p = _row(s.execute(select(*_aggregates(year)).select_from(Asset).join(Zone, Zone.id == Asset.zone_id)
-                           .where(Asset.kind == POWER, Zone.region_id == rid)).one())
-        allk = _row(s.execute(select(*_aggregates(year)).select_from(Asset).join(Zone, Zone.id == Asset.zone_id).where(Zone.region_id == rid)).one())
-        out.append({"id": rid, "name": regions.get(rid, "Unassigned"), "circuits": circuits, "substations": substations_n, **r,
+    for rid in sorted({r for r, _ in cells}, key=lambda x: regions.get(x, "")):
+        r = {k: v for k, v in (cells.get((rid, kind)) or _combine([])).items() if not k.startswith("_")}
+        p = cells.get((rid, POWER)) or _combine([])
+        allk = _combine([v for (x, _), v in cells.items() if x == rid])
+        out.append({"id": rid, "name": regions.get(rid, "Unassigned"), "circuits": circuits.get(rid, 0), "substations": subs.get(rid, 0), **r,
                     "power_transformers": p["xfmrs"], "power_poor": p["poor"], "power_mean_age": p["mean_age"],
                     "replacement_capex": allk["replacement_capex"], "all_units": allk["units"], "all_poor": allk["poor"],
                     "all_damaged": allk["damaged"], "all_risk": allk["risk"]})
-    out.sort(key=lambda r: r["name"])
     return out
 
 
 def summary(s: Session, region: str | None = None) -> dict:
     """Fleet KPIs (one region when given): distribution transformers, substation units, every type, condition bands and age."""
     year = utcnow().year
-    agg = lambda kind: _row(s.execute(_scope(select(*_aggregates(year)), region, kind)).one())  # noqa: E731
-    bands = lambda kind: dict(s.execute(_scope(select(Asset.condition, func.count(Asset.id)), region, kind).group_by(Asset.condition)).all())  # noqa: E731
-    d, p = agg(DIST), agg(POWER)
-    by_kind = []
-    for k, label in KINDS.items():
-        r = agg(k)
-        if r["units"]:
-            by_kind.append({"kind": k, "label": label, **r, "bands": {b: bands(k).get(b, 0) for b in CONDITIONS}})
-    total = agg(None)
+    cells = _by_region_kind(s, year)
+    in_scope = {k: v for k, v in cells.items() if not region or k[0] == region}
+    per_kind = {kind: _combine([v for (_, k), v in in_scope.items() if k == kind]) for kind in KINDS}
+    bands_q = _scope(select(Asset.kind, Asset.condition, func.count(Asset.id)), region).group_by(Asset.kind, Asset.condition)
+    bands: dict[str, dict] = {}
+    for kind, cond, n in s.execute(bands_q).all():
+        bands.setdefault(kind, {})[cond] = n
+    by_kind = [{"kind": k, "label": label, **{x: y for x, y in per_kind[k].items() if not x.startswith("_")},
+                "bands": {b: bands.get(k, {}).get(b, 0) for b in CONDITIONS}} for k, label in KINDS.items() if per_kind[k]["units"]]
+    total = _combine(list(in_scope.values()))
+    clean = lambda r: {k: v for k, v in r.items() if not k.startswith("_")}  # noqa: E731
     decades = [{"decade": "Not recorded" if k is None else f"{int(k) * 10}–{int(k) * 10 + 9} y", "count": n}
                for k, n in s.execute(_scope(select(((year - Asset.install_year) // 10).label("d"), func.count(Asset.id)), region, DIST)
                                      .group_by("d").order_by("d")).all()]
-    regions = region_health(s)
-    return {"region": region, "distribution": d, "power": p, "all": total, "by_kind": by_kind,
-            "bands": {b: bands(DIST).get(b, 0) for b in CONDITIONS}, "power_bands": {b: bands(POWER).get(b, 0) for b in CONDITIONS},
+    regions = region_health(s, cells=cells)
+    return {"region": region, "distribution": clean(per_kind[DIST]), "power": clean(per_kind[POWER]), "all": clean(total), "by_kind": by_kind,
+            "bands": {b: bands.get(DIST, {}).get(b, 0) for b in CONDITIONS}, "power_bands": {b: bands.get(POWER, {}).get(b, 0) for b in CONDITIONS},
             "age_histogram": decades, "regions": regions if not region else [r for r in regions if r["id"] == region],
             "replacement_capex": total["replacement_capex"], "density": density(), "reference_date": reference_date(),
             "sources": dict(s.execute(_scope(select(Asset.source, func.count(Asset.id)), region).group_by(Asset.source)).all()),
@@ -484,9 +516,12 @@ def substation_rollup(s: Session, region: str | None = None) -> list[dict]:
     return out
 
 
-def top_risk(s: Session, n: int = 10, region: str | None = None, kind: str | None = None) -> list[dict]:
+def top_risk(s: Session, n: int = 10, region: str | None = None, kind: str | None = None, condition: str | None = None) -> list[dict]:
     year = utcnow().year
-    return [serial(a, year) for a in s.scalars(_scope(select(Asset), region, kind).order_by(Asset.risk_score.desc()).limit(n)).all()]
+    q = _scope(select(Asset), region, kind)
+    if condition:
+        q = q.where(Asset.condition == condition)
+    return [serial(a, year) for a in s.scalars(q.order_by(Asset.risk_score.desc()).limit(n)).all()]
 
 
 def search(s: Session, q: str, limit: int = 20) -> list[dict]:

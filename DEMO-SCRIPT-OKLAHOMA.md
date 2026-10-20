@@ -49,6 +49,16 @@ Exact numbers vary a little from one install to the next; the ones below are app
 - The **Transformers** column shows each circuit's health index and Poor/Critical share.
 - **Scenario**: switch to **EF5**, then **EF2**, then *Try scenario*. Outages, crews and materials re-scale.
 
+## 3b. Network explorer: state → region → substation → circuit → unit (3 min)
+- Open **Intelligence → Network Explorer**. The map shows the Oklahoma outline, the five regions (approximate service areas), substations and the
+  tornado paths; the side panel shows the network-impact summary.
+- Click **Central** (map or table): the map zooms to the region and the panel lists its substations and highest-risk circuits.
+- Click **Moore South** (or any substation), then a circuit marked **in path**: its transformers, poles, reclosers and feeder breaker appear on the
+  map coloured by condition. Switch *Colour* to **storm impact** to see which circuits the tornado crosses.
+- Click a unit: its record opens in a drawer — age (with install year and reference date), health index and why, missing information,
+  predicted exposure (labelled *prediction*), confirmed damage (only from field assessments), history and recommended actions.
+- Use the breadcrumbs or **Up a level** to go back; changing region clears the old circuit.
+
 ## 4. Asset health: age and condition of major equipment (4 min)
 - Open **Intelligence → Asset Health**.
 - **KPIs**:

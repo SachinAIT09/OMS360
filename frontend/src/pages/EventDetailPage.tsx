@@ -171,7 +171,7 @@ function PredictionTab({ e }: { e: Detail }) {
             </Group>
           )}
         </Group>
-        {preview && <Alert mt="sm" color="yellow" p="xs">Showing an unsaved {scenario(preview.result)} scenario. <Button size="compact-xs" variant="subtle" onClick={() => setPreview(null)}>Back to saved prediction</Button></Alert>}
+        {preview && <Alert mt="sm" color="yellow" p="xs">Showing an unsaved scenario: {scenario(preview.result)}. <Button size="compact-xs" variant="subtle" onClick={() => setPreview(null)}>Back to saved prediction</Button></Alert>}
       </Card>
       <ForecastCard eventId={e.id} rain={rain} tornado={tornado} canRun={can("predictions.run")} />
 
