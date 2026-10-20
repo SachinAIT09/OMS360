@@ -9,7 +9,7 @@ from sqlalchemy.orm import Session
 from .. import bus, serial, weather
 from ..auth import ROLES, current_user, hash_password, require
 from ..db import DEMO_ADMIN_EMAILS, get_session, get_setting, set_setting
-from ..models import (AuditLog, Crew, Message, MutualAidRequest, NotificationRule, Outage, StormEvent, User, Zone)
+from ..models import (AuditLog, Crew, Message, MutualAidRequest, Outage, StormEvent, User, Zone)
 from ..services import ops
 from ..services.recommendations import latest_prediction
 from .events import get_event

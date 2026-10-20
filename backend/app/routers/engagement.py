@@ -12,7 +12,7 @@ from .. import bus, serial, weather
 from ..auth import current_user, current_user_query, require
 from ..data import SAMPLE_ADDRESSES, UTILITY_NAME, address_feeder
 from ..db import get_session, get_setting
-from ..models import (ChatConversation, ChatMessage, Crew, Facility, Feeder, Message, NotificationRule, Outage, PublishedEtr, StagingYard, StormEvent,
+from ..models import (ChatConversation, ChatMessage, Crew, Facility, Feeder, Message, NotificationRule, Outage, StagingYard, StormEvent,
                       User, Zone, utcnow)
 from ..services import comms, ops
 from ..services import jarvis as jarvis_svc

@@ -12,8 +12,7 @@ from sqlalchemy.orm import Session
 from .. import bus, serial
 from ..auth import current_user, require
 from ..db import get_session
-from ..models import (Crew, Facility, MutualAidRequest, Outage, PublishedCircuitEtr, PublishedEtr, StagingYard, StormEvent, User, Zone,
-                      utcnow)
+from ..models import (Crew, Facility, MutualAidRequest, Outage, PublishedCircuitEtr, PublishedEtr, StagingYard, StormEvent, User, Zone)
 from ..services import ops
 from ..services.connector import next_number
 from .events import get_event

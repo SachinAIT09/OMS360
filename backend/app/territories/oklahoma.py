@@ -160,7 +160,7 @@ def comms_templates(e, now, site: str) -> list[tuple]:
     return [
         ("sms", "all", "", f"Prairie Sky Power: the Storm Prediction Center has issued a High Risk for central Oklahoma today. Know your shelter, "
          f"charge phones and keep shoes and a flashlight by your safe room. Report outages at {site} or text OUT to 78900.", "sent", True, 20, {}),
-        ("email", "all", f"Severe weather today: be ready to shelter",
+        ("email", "all", "Severe weather today: be ready to shelter",
          f"Long-track tornadoes are possible across central Oklahoma this afternoon and evening.\n\nHow to prepare:\n• Know where you will shelter "
          f"and practise getting there\n• Charge phones and backup batteries\n• Keep shoes, a helmet and a flashlight in your safe room\n"
          f"• After the storm, stay 35 ft from downed lines and report them on 911\n\nOur line crews are staged outside the risk area and will move "
@@ -172,11 +172,11 @@ def comms_templates(e, now, site: str) -> list[tuple]:
          "outage maps and restoration times.", "sent", True, 17, {}),
         ("sms", "medical", "", "Prairie Sky Power: you are registered as medical-needs/life-support. Severe storms today could cause outages "
          "lasting several days where tornadoes strike. Charge backup batteries and plan where you will go. Questions: 1-800-555-0142.", "sent", False, 14, {}),
-        ("sms", "zone:moo", "", f"Prairie Sky Power: Moore is in today's highest-risk area. If a warning is issued, shelter immediately. After "
+        ("sms", "zone:moo", "", "Prairie Sky Power: Moore is in today's highest-risk area. If a warning is issued, shelter immediately. After "
          "the storm, never touch downed lines — assume they are live.", "sent", True, 6, {}),
         ("x", "all", "", f"Our crews are staged at 5 yards outside the tornado watch area. Expect outages from hail and straight-line winds too. "
          f"Track restoration live at {site}", "pending", True, 0.7, {}),
-        ("sms", "zone:nor", "", f"Prairie Sky Power: crews are staged in Norman ahead of today's storms. If your power goes out, text OUT to 78900 — "
+        ("sms", "zone:nor", "", "Prairie Sky Power: crews are staged in Norman ahead of today's storms. If your power goes out, text OUT to 78900 — "
          "smart meters will usually report it before you do.", "pending", True, 0.4, {}),
         ("sms", "all", "", f"Prairie Sky Power: a Tornado Watch is in effect. When a warning is issued for your area, go to your shelter now. "
          f"Track outages at {site}.", "scheduled", True, 3, {"scheduled_for": later}),
@@ -185,12 +185,12 @@ def comms_templates(e, now, site: str) -> list[tuple]:
          {"scheduled_for": later + timedelta(hours=1)}),
         ("website", "all", "Storm center", f"{name}: crews staged, live outage map and restoration times at {site}. Updated every 30 minutes "
          "once outages begin.", "draft", True, 1.5, {}),
-        ("facebook", "zone:mwc", "", f"Midwest City and Del City: today's storms may bring tornadoes and large hail. Please make sure your "
+        ("facebook", "zone:mwc", "", "Midwest City and Del City: today's storms may bring tornadoes and large hail. Please make sure your "
          "family knows where to shelter.", "rejected", True, 6, {"reject_reason": "Add the public storm shelter list and the city siren schedule."}),
         # ---- spare wording for the demo top-up
         ("facebook", "all", "", f"Line crews from Texas, Arkansas and Kansas are rolling in to help after {name}. If you see a downed line, stay "
          f"35 ft away and call 911. Outage map: {site}", "pending", True, 0.5, {}),
-        ("sms", "zone:chk", "", f"Prairie Sky Power: tree crews are working in Chickasha ahead of today's storms. Expect short planned "
+        ("sms", "zone:chk", "", "Prairie Sky Power: tree crews are working in Chickasha ahead of today's storms. Expect short planned "
          "interruptions this afternoon.", "pending", True, 0.3, {}),
         ("email", "medical", "Your storm plan: medical-needs customers", f"Ahead of {name}, please confirm your backup power plan. "
          "Call 1-800-555-0142 if you need help getting to a shelter.", "pending", False, 0.6, {}),

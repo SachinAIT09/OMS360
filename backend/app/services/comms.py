@@ -98,7 +98,7 @@ def _tornado_templates(event: StormEvent, ctx: dict, lf: str, lf_t: str, worst: 
         "warning": {
             "subject": f"Tornado Watch: {name}",
             "short": f"⚠️ Tornado Watch for {AREA}. If a warning is issued for you, shelter immediately. {fmt(ctx.get('line_workers', 0))} line workers are staged and will move in once the storms pass. {tag}",
-            "long": f"A Tornado Watch is in effect for our service area.\n\nIf a Tornado Warning is issued for your location, go to your shelter immediately — don't wait to see the storm.\n\nAfter it passes, stay 35 ft from downed lines and assume they are live. You don't need to report your outage: smart meters tell us automatically and we'll text your estimated restoration time.",
+            "long": "A Tornado Watch is in effect for our service area.\n\nIf a Tornado Warning is issued for your location, go to your shelter immediately — don't wait to see the storm.\n\nAfter it passes, stay 35 ft from downed lines and assume they are live. You don't need to report your outage: smart meters tell us automatically and we'll text your estimated restoration time.",
             "sms": f"{UTILITY_SHORT}: Tornado Watch in effect. If a warning is issued, shelter now. After the storm, stay away from downed lines — call 911.",
         },
         "outage": {

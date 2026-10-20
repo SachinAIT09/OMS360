@@ -12,7 +12,7 @@ from sqlalchemy.orm import Session
 from .. import bus
 from ..data import DA_PARTNER, MA_PARTNERS, MEDICAL_NEEDS, TREE_PARTNER
 from ..fmt import fmt
-from ..models import (Crew, Message, MutualAidRequest, Outage, PredictionRun, PublishedEtr, Recommendation, StagingYard,
+from ..models import (Crew, Message, MutualAidRequest, PredictionRun, PublishedEtr, Recommendation, StagingYard,
                       StormEvent, Task, utcnow)
 from . import comms, ops
 from .events import hazard, impact_word, is_rain, scale_label

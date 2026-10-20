@@ -1,7 +1,7 @@
 """Static reference data for the active territory (see territories/): its zones, regions, facilities and brand,
 plus the hazard curves and defaults every territory shares."""
 from .territories import NAME as TERRITORY, active as _t
-from .territories.common import (CATF, CHANNELS, DEFAULT_TRIGGERS, EF_DAMAGE, EF_WIDTH_M, EF_WIND, INTERNAL, LIFT_STATIONS,  # noqa: F401
+from .territories.common import (CATF, CHANNELS, DEFAULT_TRIGGERS, EF_DAMAGE, EF_WIDTH_M, EF_WIND, INTERNAL, LIFT_STATIONS,
                                  MEDICAL_NEEDS, MUTUAL_AID_DAY_COST, SUBSTATION_SIDES, SURGE_BY_CAT, WIND_BY_CAT, address_feeder)
 
 PROFILE = _t
@@ -48,3 +48,15 @@ JARVIS_SUGGESTIONS = _t.JARVIS_SUGGESTIONS
 ZONE_BY_ID = {z["id"]: z for z in ZONES}
 TOTAL_CUST = sum(z["cust"] for z in ZONES)
 TOTAL_WATER = sum(z["water"] for z in ZONES)
+
+# Public names (re-exported from territories/), so `from .data import X` works for every one of them.
+__all__ = [
+    "AREA", "MEDICAL_NEEDS", "CATF", "CHANNELS", "CREW_PREFIX",
+    "DA_PARTNER", "DEFAULT_TRIGGERS", "DEMO_EVENT", "EF_DAMAGE", "EF_WIDTH_M", "EF_WIND", "EMAIL_DOMAIN",
+    "FACILITIES", "HASHTAG_SUFFIX", "HAS_WATER", "HAZARD", "HISTORICAL", "HISTORY_MA", "HISTORY_POSITION", "INTERNAL",
+    "JARVIS_SUGGESTIONS", "LANDFALL", "LIFT_STATIONS", "MAP_CENTER", "MAP_ZOOM", "MA_PARTNERS", "MUTUAL_AID_DAY_COST",
+    "NEW_EVENT", "PHASES", "PROFILE", "RAIN_DEMO", "RAIN_GRADIENT", "REGIONS", "SAMPLE_ADDRESSES",
+    "SAMPLE_FORECAST_CSV", "SITE", "STATE", "STATE_CODE", "SUBSTATION_SIDES", "SURGE_BY_CAT", "TERRITORY",
+    "TOTAL_CUST", "TOTAL_WATER", "TREE_PARTNER", "TZ_NAME", "UTILITY_NAME", "UTILITY_SHORT", "WEATHER_LABEL",
+    "WEATHER_POINT", "WIND_BY_CAT", "YARDS", "ZONES", "ZONE_BY_ID", "address_feeder",
+]

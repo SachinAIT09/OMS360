@@ -19,8 +19,8 @@ from sqlalchemy import Integer, case, cast, delete, func, select
 from sqlalchemy.orm import Session
 
 from ..models import Asset, AssetEvent, Facility, Feeder, Region, Substation, WorkOrder, Zone, utcnow
-from .asset_model import (BREAKER, DIST, KINDS, POLE, POOR, POWER, RECLOSER, SETTING_KEY, SWITCHGEAR, load_weights,  # noqa: F401
-                          methodology, score as _score, validate_weights)
+from .asset_model import (BREAKER, DIST, KINDS, POLE, POOR, POWER, RECLOSER, SETTING_KEY, SWITCHGEAR, load_weights,
+                          score as _score, validate_weights)
 
 BANDS = (("Good", 70), ("Fair", 50), ("Poor", 30), ("Critical", 0))
 CONDITIONS = ("Good", "Fair", "Poor", "Critical", "Unknown")
