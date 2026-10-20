@@ -69,3 +69,27 @@ def test_live_circuit_etrs_show_transformer_health(client, ops_h):
     with SessionLocal() as s:
         o = s.query(Outage).filter(Outage.event_id == rain["id"], Outage.status.in_(ops.OPEN)).first()
         assert ops.ticket_hours(s, o) >= ops.job_hours(o)
+
+
+def test_every_open_storm_gets_sample_comms_that_persist(client, ops_h):
+    """A storm opened later (e.g. a new NWS warning) gets the sample campaign on the next app load; it lives in the database, so
+    refreshing and restarting keep it, and what people did to the messages is never undone."""
+    from app.db import init_db
+
+    e = client.post("/api/events", headers=ops_h, json={"name": "Lawton tornado", "kind": "Tornado", "category": 2, "lat": 34.55,
+                                                       "lng": -98.5}).json()
+    msgs = lambda: client.get(f"/api/messages?event_id={e['id']}", headers=ops_h).json()
+    assert msgs() == []
+    assert client.post("/api/demo/refresh", headers=ops_h).json()["messages"] >= 12
+    first = msgs()
+    assert {m["status"] for m in first} >= {"sent", "pending", "scheduled", "draft", "rejected"}
+    pending = next(m for m in first if m["status"] == "pending")
+    assert client.post(f"/api/messages/{pending['id']}/approve", headers=ops_h).status_code == 200
+
+    client.post("/api/demo/refresh", headers=ops_h)  # page refresh
+    init_db()  # server restart
+    after = {m["id"]: m for m in msgs()}
+    assert {m["id"] for m in first} <= after.keys()  # nothing was deleted
+    assert after[pending["id"]]["status"] in ("sent", "scheduled")  # the approval stuck
+    assert sum(m["status"] == "pending" for m in after.values()) >= 2  # and the queue was topped back up
+    assert client.post("/api/demo/refresh", headers=ops_h).json()["messages"] == 0  # stable: nothing more to add

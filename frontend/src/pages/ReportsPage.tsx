@@ -122,6 +122,7 @@ export default function ReportsPage() {
               <Text fw={600} p="md" pb={0}>Communications by channel</Text>
               <Table mt="xs"><Table.Tbody>{d.channels.map(c => <Table.Tr key={c.channel}><Table.Td>{channelLabel(c.channel)}</Table.Td><Table.Td ta="right">{c.messages} {c.messages === 1 ? "message" : "messages"}</Table.Td>
                 <Table.Td ta="right" className="tabular-nums">{fmt(c.recipients)} recipients</Table.Td></Table.Tr>)}</Table.Tbody></Table>
+              {!d.channels.length && <Text size="sm" c="dimmed" p="md">No messages sent for this event yet.</Text>}
             </Card>
           </Grid.Col>
           <Grid.Col span={{ base: 12, lg: 6 }}>

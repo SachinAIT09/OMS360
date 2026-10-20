@@ -117,6 +117,7 @@ def ensure_demo_activity(s: Session) -> None:
         _early_bands(s, random.Random(361), kyle, utcnow())
     if not s.scalars(select(Message.id).where(Message.event_id == kyle.id)).first():
         _pre_storm_comms(s, kyle, utcnow())
+    ensure_event_comms(s)
     s.commit()
 
 
@@ -134,30 +135,56 @@ TOPUP_STATUS = [("in_progress", 4), ("assigned", 4), ("assessed", 3), ("reported
 def refresh_demo(s: Session) -> dict:
     """Top the demo storm back up to its floor without undoing anything the user did: fill only what's missing."""
     rain_outages = _refresh_rain_demo(s)
+    messages = ensure_event_comms(s)  # storms opened since the last load (e.g. a new NWS warning) get their sample campaign
     e = _demo_storm(s)
     if not e:
-        return {"outages": rain_outages, "messages": 0}
+        return {"outages": rain_outages, "messages": messages}
     now = utcnow()
     open_n = s.scalar(select(func.count(Outage.id)).where(Outage.event_id == e.id,
                                                          Outage.status.in_(["reported", "assessed", "assigned", "in_progress"]))) or 0
     outages = _early_bands(s, random.Random(), e, now, TOPUP_STATUS, recent=True) if open_n < DEMO_OPEN_FLOOR else 0
-    from .services import comms
-    aud = {a["id"]: a["count"] for a in comms.audiences(s)}
+    s.flush()
+    return {"outages": outages + rain_outages, "messages": messages}
+
+
+def _top_up_messages(s: Session, e: StormEvent, aud: dict, now) -> int:
+    """Keep a storm's Communications screen stocked: at least DEMO_MESSAGE_FLOOR messages in each workflow state."""
     rows = s.execute(select(Message.status, Message.body).where(Message.event_id == e.id)).all()
     used = {body for _, body in rows}
     have: dict[str, int] = {}
     for st, _ in rows:
         have[st] = have.get(st, 0) + 1
     rng = random.Random()
-    messages = 0
+    added = 0
     for status, floor in DEMO_MESSAGE_FLOOR.items():
         pool = [t for t in PROFILE.comms_templates(e, now, SITE) if t[4] == status]
         fresh = [t for t in pool if t[3] not in used] or pool  # prefer wording that isn't on screen already
         for t in fresh[:max(0, floor - have.get(status, 0))]:
             _add_message(s, e, aud, (*t[:6], rng.uniform(0.1, 1.2), t[7]), now)
-            messages += 1
+            added += 1
+    return added
+
+
+def ensure_event_comms(s: Session) -> int:
+    """Sample customer communications for every open storm of the demo storm's kind: the initial campaign once for a storm with
+    no messages, then the per-status floor. Only adds rows, so messages people wrote, approved or rejected are never touched.
+    Messages are stored in the database, so they survive page refreshes and server restarts."""
+    from .services import comms
+    events = s.scalars(select(StormEvent).where(StormEvent.status != "closed", StormEvent.kind == DEMO_EVENT["kind"])).all()
+    if not events:
+        return 0
+    aud = {a["id"]: a["count"] for a in comms.audiences(s)}
+    now = utcnow()
+    added = 0
+    for e in events:
+        if not s.scalars(select(Message.id).where(Message.event_id == e.id)).first():
+            for t in PROFILE.comms_templates(e, now, SITE)[:12]:
+                _add_message(s, e, aud, t, now)
+                added += 1
+            s.flush()
+        added += _top_up_messages(s, e, aud, now)
     s.flush()
-    return {"outages": outages + rain_outages, "messages": messages}
+    return added
 
 
 # ---------------------------------------------------------------- demo: Rain Event in restoration (circuit / region ETRs)
