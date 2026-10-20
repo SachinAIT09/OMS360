@@ -7,7 +7,12 @@ export const API_BASE = `${(import.meta.env.VITE_API_URL ?? "").replace(/\/+$/, 
 
 export const tokenStore = {
   get: () => { try { return localStorage.getItem(TOKEN_KEY); } catch { return null; } },
-  set: (t: string | null) => { try { t ? localStorage.setItem(TOKEN_KEY, t) : localStorage.removeItem(TOKEN_KEY); } catch { /* storage blocked */ } },
+  set: (t: string | null) => {
+    try {
+      if (t) localStorage.setItem(TOKEN_KEY, t);
+      else localStorage.removeItem(TOKEN_KEY);
+    } catch { /* storage blocked */ }
+  },
 };
 
 export class ApiError extends Error {

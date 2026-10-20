@@ -25,7 +25,7 @@ def crew(c: Crew) -> dict:
 
 def outage(o: Outage, etr=None, zone_name: str | None = None) -> dict:
     return {"id": o.id, "number": o.number, "event_id": o.event_id, "zone_id": o.zone_id, "zone": zone_name or (o.zone.short if o.zone else o.zone_id),
-            "feeder_id": o.feeder_id, "device": o.device, "cause": o.cause, "damage": o.damage, "customers": o.customers,
+            "feeder_id": o.feeder_id, "asset_id": o.asset_id, "device": o.device, "cause": o.cause, "damage": o.damage, "customers": o.customers,
             "priority": o.priority, "facility_id": o.facility_id, "status": o.status, "source": o.source, "lat": o.lat, "lng": o.lng,
             "crew": {"id": o.crew.id, "code": o.crew.code, "company": o.crew.company} if o.crew else None,
             "reported_at": o.reported_at, "assigned_at": o.assigned_at, "started_at": o.started_at, "restored_at": o.restored_at,

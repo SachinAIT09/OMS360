@@ -326,6 +326,8 @@ def set_status(s: Session, o: Outage, status: str, user: str, note: str = "") ->
         o.crew.status = "available"
         o.crew_id = None
     log(s, o, "status", f"Status {prev.replace('_', ' ')} → {status.replace('_', ' ')}" + (f": {note}" if note else ""), user)
+    from .asset_history import sync_ticket
+    sync_ticket(s, o)  # field-confirmed damage / replacement on the named unit
 
 
 def assign(s: Session, o: Outage, crew: Crew, user: str) -> None:
@@ -343,6 +345,8 @@ def assign(s: Session, o: Outage, crew: Crew, user: str) -> None:
         o.etr_at = _round30(now + timedelta(hours=TRAVEL_H + ticket_hours(s, o)))
     crew.status = "assigned"
     log(s, o, "assigned", f"Assigned to {crew.code} ({crew.company}, {crew.size} workers). Committed ETR set.", user)
+    from .asset_history import sync_ticket
+    sync_ticket(s, o)
 
 
 def override_etr(s: Session, o: Outage, etr: datetime, user: str) -> None:

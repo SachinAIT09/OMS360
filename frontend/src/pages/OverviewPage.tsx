@@ -5,7 +5,7 @@ import {
   IconAlertTriangle, IconBolt, IconBuildingHospital, IconClock, IconCloudStorm, IconDroplet, IconSparkles, IconTruck, IconUsers,
 } from "@tabler/icons-react";
 import { api } from "../api/client";
-import { useAction, useGet, useReference } from "../api/hooks";
+import { useAction, useGet, useGeo, useReference } from "../api/hooks";
 import type { Overview, Recommendation } from "../api/types";
 import { useAuth } from "../auth/AuthContext";
 import { useCurrentEvent } from "../auth/EventContext";
@@ -13,6 +13,7 @@ import { EventStatusBadge } from "../components/badges";
 import { Empty, ErrorState, Loading, PageHeader, SectionTitle, Stat } from "../components/common";
 import { EventLifecycle } from "../components/EventLifecycle";
 import { RecommendationCard } from "../components/RecommendationCard";
+import { StormImpactCard } from "../components/StormImpactCard";
 import { MapLegend, TerritoryMap } from "../components/TerritoryMap";
 import { PROFILE } from "../lib/profile";
 import { ago, dt, dtShort, fmt, hoursUntil, impactWord, intensity, isRain, pct, scenario, sevColor } from "../lib/format";
@@ -22,6 +23,7 @@ export default function OverviewPage() {
   const go = useNavigate();
   const { can } = useAuth();
   const ref = useReference();
+  const geo = useGeo();
   const ov = useGet<Overview>(event ? `/events/${event.id}/overview` : null, { refetchInterval: 30_000 });
   const recs = useGet<Recommendation[]>(event ? `/events/${event.id}/recommendations` : null);
   const doneTask = useAction((id: number) => api.post(`/tasks/${id}/done`), { success: "Task completed" });
@@ -76,6 +78,7 @@ export default function OverviewPage() {
           <Stat label="Awaiting decision" value={open.length + ov.data.pending_messages} icon={<IconSparkles size={16} />} color="ai" hint={`${open.length} recommendations · ${ov.data.pending_messages} messages`} />
         </>}
       </SimpleGrid>
+      {(e.kind === "Tornado" || e.status === "active" || e.status === "restoring") && <div style={{ marginBottom: "var(--mantine-spacing-lg)" }}><StormImpactCard eventId={e.id} /></div>}
 
       <Grid gutter="lg">
         <Grid.Col span={{ base: 12, lg: 7.5 }}>
@@ -83,7 +86,8 @@ export default function OverviewPage() {
             <SectionTitle right={<Group gap="xs"><Button size="compact-sm" variant="subtle" onClick={() => go(live ? "/outages?view=map" : `/events/${e.id}`)}>Open map</Button></Group>}>
               {live ? "Live outages by zone" : "Predicted impact by zone"}
             </SectionTitle>
-            <TerritoryMap zones={zones} facilities={ref.data.facilities} yards={ref.data.yards} track={live ? null : e.track} height={430} />
+            <TerritoryMap zones={zones} facilities={ref.data.facilities} yards={ref.data.yards} track={live && e.kind !== "Tornado" ? null : e.track} height={430}
+              outline={geo.data?.state?.rings} />
             <MapLegend mode={live ? "out" : "pred"} />
           </Card>
         </Grid.Col>

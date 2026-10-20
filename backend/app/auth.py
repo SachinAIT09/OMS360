@@ -34,6 +34,7 @@ PERMISSIONS = {
     "messages.approve": {"executive", "comms", "ops_manager", "admin"},
     "tasks.manage": {"ops_manager", "dispatcher", "admin"},
     "assets.manage": {"ops_manager", "admin"},
+    "workorders.manage": {"ops_manager", "dispatcher", "admin"},
     "admin": {"admin"},
 }
 

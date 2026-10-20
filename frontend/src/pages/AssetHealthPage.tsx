@@ -1,84 +1,70 @@
 import { useState } from "react";
-import { useSearchParams } from "react-router-dom";
+import { useNavigate, useSearchParams } from "react-router-dom";
 import {
-  Alert, Badge, Button, Card, Drawer, Grid, Group, Modal, Pagination, Progress, SegmentedControl, Select, SimpleGrid, Slider, Stack, Switch, Table, Tabs,
-  Text, Textarea, Tooltip,
+  Alert, Badge, Button, Card, Grid, Group, List, Modal, NumberInput, SegmentedControl, Select, SimpleGrid, Slider, Stack, Switch, Table, Tabs, Text, Textarea, Tooltip,
 } from "@mantine/core";
 import { BarChart, LineChart } from "@mantine/charts";
 import { useDebouncedValue, useDisclosure } from "@mantine/hooks";
-import { IconActivityHeartbeat, IconBolt, IconBuildingFactory2, IconCash, IconFileUpload, IconInfoCircle } from "@tabler/icons-react";
+import { IconBolt, IconBuildingFactory2, IconCash, IconFileUpload, IconInfoCircle, IconMap2 } from "@tabler/icons-react";
 import { api } from "../api/client";
-import { useAction, useGet, useRoutes } from "../api/hooks";
-import type {
-  Asset, AssetSummary, CircuitHealth, CircuitHealthDetail, Condition, PredCircuit, PredictionRun, ReplacementPlan, StormEvent, SubstationAsset,
-} from "../api/types";
+import { useAction, useGet, useGeo, useRoutes } from "../api/hooks";
+import type { Asset, AssetKind, AssetSummary, CircuitHealth, HealthModel, ReplacementPlan, SubstationAsset, WorkOrder } from "../api/types";
 import { useAuth } from "../auth/AuthContext";
-import { useCurrentEvent } from "../auth/EventContext";
+import { WorkOrders } from "../components/AssetDetail";
+import { AgeText, AssetLink, AssetTable, BandBar, HealthBadge, KIND_LABEL, KIND_PLURAL, ModelNote, hiColor } from "../components/assetUi";
 import { Loading, PageHeader, SectionTitle, Stat } from "../components/common";
 import { TerritoryMap } from "../components/TerritoryMap";
-import { fmt, money, pct } from "../lib/format";
+import { date, fmt, money, pct } from "../lib/format";
 import { PROFILE } from "../lib/profile";
-
-const BAND_COLOR: Record<Condition, string> = { Good: "teal", Fair: "yellow", Poor: "orange", Critical: "red" };
-const BANDS: Condition[] = ["Good", "Fair", "Poor", "Critical"];
-/** Health-index colour scale (0 end of life … 100 as new), shared by the map and tables. */
-const hiColor = (hi: number) => (hi >= 70 ? "#3ec46d" : hi >= 55 ? "#f5a623" : hi >= 40 ? "#f07a2e" : "#e0506a");
-
-function HealthBadge({ hi, condition }: { hi: number; condition: Condition }) {
-  return <Badge variant="light" color={BAND_COLOR[condition]} style={{ textTransform: "none" }}>HI {Math.round(hi)} · {condition}</Badge>;
-}
-
-/** Share of each condition band as one stacked bar. */
-function BandBar({ bands }: { bands: Record<Condition, number> }) {
-  const total = BANDS.reduce((s, b) => s + (bands[b] ?? 0), 0) || 1;
-  return (
-    <>
-      <Progress.Root size={14}>
-        {BANDS.map(b => (
-          <Tooltip key={b} label={`${b}: ${fmt(bands[b])} (${pct((bands[b] ?? 0) / total)})`}>
-            <Progress.Section value={((bands[b] ?? 0) / total) * 100} color={BAND_COLOR[b]} />
-          </Tooltip>))}
-      </Progress.Root>
-      <Group gap="md" mt={6}>{BANDS.map(b => <Text key={b} size="xs" c="dimmed"><Text span c={`${BAND_COLOR[b]}.5`} fw={700}>■</Text> {b} {pct((bands[b] ?? 0) / total)}</Text>)}</Group>
-    </>
-  );
-}
 
 export default function AssetHealthPage() {
   const [params, setParams] = useSearchParams();
   const region = params.get("region");
-  const circuit = params.get("circuit");
   const tab = params.get("tab") ?? "circuits";
   const set = (k: string, v: string | null) => { const p = new URLSearchParams(params); if (v) p.set(k, v); else p.delete(k); setParams(p, { replace: true }); };
   const { can } = useAuth();
+  const go = useNavigate();
   const [importOpen, importCtl] = useDisclosure(false);
-  const { data: sm } = useGet<AssetSummary>("/assets/summary");
-  if (!sm) return <Loading />;
+  const { data: sm, isFetching } = useGet<AssetSummary>(`/assets/summary${region ? `?region=${region}` : ""}`);
+  const all = useGet<AssetSummary>("/assets/summary");  // the region table always lists every region
+  if (!sm || !all.data) return <Loading />;
   const d = sm.distribution, p = sm.power;
+  const regionName = all.data.regions.find(r => r.id === region)?.name;
 
   return (
     <>
-      <PageHeader title="Asset health" description={`Transformer age and condition across ${PROFILE.utility}, by region, circuit and substation — and how it changes storm risk.`}
-        actions={can("assets.manage") && <Button variant="default" leftSection={<IconFileUpload size={16} />} onClick={importCtl.open}>Import asset register</Button>} />
-      <SimpleGrid cols={{ base: 2, md: 3, xl: 6 }} mb="lg">
-        <Stat label="Distribution transformers" value={fmt(d.xfmrs)} hint={`mean age ${d.mean_age} y · oldest ${d.oldest} y`} icon={<IconBolt size={16} />} />
-        <Stat label="Poor or critical" value={fmt(d.poor)} color="orange" hint={`${pct(d.pct_poor)} of the fleet · ${fmt(d.critical)} critical`} progress={d.pct_poor} />
-        <Stat label="Past design life" value={pct(d.pct_over_life)} color="yellow" hint="35 y pole-mount · 40 y pad-mount" />
-        <Stat label="Expected failures, 12 mo" value={fmt(d.expected_failures + p.expected_failures)} color="red" hint="Weibull on effective age" />
-        <Stat label="Substation transformers" value={fmt(p.xfmrs)} icon={<IconBuildingFactory2 size={16} />} hint={`${p.poor} poor/critical · mean age ${p.mean_age} y`} />
-        <Stat label="Replacement backlog" value={money(sm.replacement_capex)} icon={<IconCash size={16} />} color="ai" hint="Poor + Critical units at today's cost" />
+      <PageHeader title="Asset health"
+        description={`Age and condition of major equipment across ${PROFILE.utility}, by region, substation, circuit and unit — and how it changes storm risk.`}
+        actions={<Group gap="xs">
+          <Button variant="default" leftSection={<IconMap2 size={16} />} onClick={() => go(`/network${region ? `?region=${region}` : ""}`)}>Open in network explorer</Button>
+          {can("assets.manage") && <Button variant="default" leftSection={<IconFileUpload size={16} />} onClick={importCtl.open}>Import asset register</Button>}
+        </Group>} />
+      <Group mb="md" gap="sm" wrap="wrap">
+        <Select w={220} placeholder="All regions" clearable value={region} onChange={v => set("region", v)} aria-label="Region"
+          data={all.data.regions.map(r => ({ value: r.id, label: `${r.name} region` }))} />
+        {region && <Badge size="lg" variant="light">Showing {regionName} region</Badge>}
+        <ModelNote compact />
+        <Tooltip label={`Ages are whole years from the install year to ${date(sm.reference_date)}`}><Badge variant="outline" color="gray">Ages as of {date(sm.reference_date)}</Badge></Tooltip>
+        {Object.entries(sm.sources).map(([k, n]) => <Badge key={k} variant="outline" color={k === "imported" ? "teal" : "gray"}>{fmt(n)} {k === "imported" ? "imported" : "sandbox (synthetic)"} records</Badge>)}
+      </Group>
+      <SimpleGrid cols={{ base: 2, md: 3, xl: 6 }} mb="lg" style={{ opacity: isFetching ? 0.7 : 1 }}>
+        <Stat label="Distribution transformers" value={fmt(d.units)} hint={`mean age ${d.mean_age} y · oldest ${d.oldest} y`} icon={<IconBolt size={16} />} />
+        <Stat label="Poor or critical" value={fmt(sm.all.poor)} color="orange" hint={`${pct(sm.all.pct_poor)} of ${fmt(sm.all.units)} units · ${fmt(sm.all.critical)} critical`} progress={sm.all.pct_poor} />
+        <Stat label="Not scored" value={fmt(sm.all.unknown)} hint="install year not recorded" />
+        <Stat label="Expected failures, 12 mo" value={fmt(sm.all.expected_failures)} color="red" hint="Weibull on effective age" />
+        <Stat label="Substation transformers" value={fmt(p.units)} icon={<IconBuildingFactory2 size={16} />} hint={`${p.poor} poor/critical · mean age ${p.mean_age} y`} />
+        <Stat label="Replacement backlog" value={money(sm.replacement_capex)} icon={<IconCash size={16} />} color="ai" hint={`Poor + Critical units · ${sm.open_work_orders} open work orders`} />
       </SimpleGrid>
 
       <Grid gutter="lg" mb="lg">
         <Grid.Col span={{ base: 12, lg: 5 }}>
           <Card h="100%">
-            <SectionTitle>Distribution transformers by age</SectionTitle>
+            <SectionTitle>Distribution transformers by age{regionName ? ` — ${regionName}` : ""}</SectionTitle>
             <BarChart h={200} data={sm.age_histogram} dataKey="decade" series={[{ name: "count", label: "Transformers", color: "brand.5" }]}
               tickLine="none" gridAxis="y" valueFormatter={v => fmt(v)} />
-            <Text size="sm" fw={600} mt="md" mb={6}>Condition — distribution</Text>
-            <BandBar bands={sm.bands} />
-            <Text size="sm" fw={600} mt="md" mb={6}>Condition — substation power transformers</Text>
-            <BandBar bands={sm.power_bands} />
+            <Text size="sm" fw={600} mt="md" mb={6}>Condition by equipment type</Text>
+            <Stack gap="sm">{sm.by_kind.map(k => (
+              <div key={k.kind}><Text size="xs" c="dimmed" mb={2}>{KIND_PLURAL[k.kind]} · {fmt(k.units)} · mean age {k.mean_age} y</Text><BandBar bands={k.bands ?? {}} /></div>))}</Stack>
           </Card>
         </Grid.Col>
         <Grid.Col span={{ base: 12, lg: 7 }}>
@@ -89,12 +75,11 @@ export default function AssetHealthPage() {
                 <Table.Thead><Table.Tr><Table.Th>Region</Table.Th><Table.Th ta="right">Circuits</Table.Th><Table.Th ta="right">Transformers</Table.Th>
                   <Table.Th ta="right">Mean age</Table.Th><Table.Th ta="right">Health</Table.Th><Table.Th ta="right">Poor / critical</Table.Th>
                   <Table.Th ta="right">Failures / yr</Table.Th><Table.Th ta="right">Substation units</Table.Th><Table.Th ta="right">Backlog</Table.Th></Table.Tr></Table.Thead>
-                <Table.Tbody>{sm.regions.map(r => (
-                  <Table.Tr key={r.id} className="row-click" onClick={() => set("region", region === r.id ? null : r.id)}
-                    bg={region === r.id ? "var(--mantine-color-default-hover)" : undefined}>
+                <Table.Tbody>{all.data.regions.map(r => (
+                  <Table.Tr key={r.id} className="row-click" onClick={() => set("region", region === r.id ? null : r.id)} bg={region === r.id ? "var(--mantine-color-default-hover)" : undefined}>
                     <Table.Td fw={600}>{r.name}</Table.Td>
                     <Table.Td ta="right" className="tabular">{r.circuits}</Table.Td>
-                    <Table.Td ta="right" className="tabular">{fmt(r.xfmrs)}</Table.Td>
+                    <Table.Td ta="right" className="tabular">{fmt(r.units)}</Table.Td>
                     <Table.Td ta="right" className="tabular">{r.mean_age} y</Table.Td>
                     <Table.Td ta="right" className="tabular" fw={600} c={hiColor(r.mean_hi)}>{Math.round(r.mean_hi)}</Table.Td>
                     <Table.Td ta="right" className="tabular">{fmt(r.poor)} <Text span size="xs" c="dimmed">({pct(r.pct_poor)})</Text></Table.Td>
@@ -105,55 +90,60 @@ export default function AssetHealthPage() {
                 </Table.Tbody>
               </Table>
             </Table.ScrollContainer>
-            <Text size="xs" c="dimmed" p="sm">Click a region to filter the circuits and substations below. Health index (HI) 0–100: age against design life, inspection score,
-              loading and — for substation units — dissolved gas, oil moisture, through-faults and maintenance.</Text>
+            <Text size="xs" c="dimmed" p="sm">Click a region to filter every number on this page. Health index (HI) 0–100 combines age against design life with inspection, test
+              and loading evidence; see the Health model tab.</Text>
           </Card>
         </Grid.Col>
       </Grid>
 
       <Tabs value={tab} onChange={v => set("tab", v === "circuits" ? null : v)} keepMounted={false}>
-        <Tabs.List mb="md">
+        <Tabs.List mb="md" style={{ overflowX: "auto", flexWrap: "nowrap" }}>
           <Tabs.Tab value="circuits">Circuits</Tabs.Tab>
           <Tabs.Tab value="substations">Substation transformers</Tabs.Tab>
-          <Tabs.Tab value="risk">Highest-risk units</Tabs.Tab>
+          <Tabs.Tab value="types">By equipment type</Tabs.Tab>
           <Tabs.Tab value="plan">Replacement plan</Tabs.Tab>
+          <Tabs.Tab value="workorders">Work orders</Tabs.Tab>
+          <Tabs.Tab value="model">Health model</Tabs.Tab>
         </Tabs.List>
-        <Tabs.Panel value="circuits"><CircuitsTab region={region} onOpen={id => set("circuit", id)} regionName={sm.regions.find(r => r.id === region)?.name} /></Tabs.Panel>
+        <Tabs.Panel value="circuits"><CircuitsTab region={region} regionName={regionName} /></Tabs.Panel>
         <Tabs.Panel value="substations"><SubstationsTab region={region} /></Tabs.Panel>
-        <Tabs.Panel value="risk"><AssetTable rows={sm.top_risk} showWhere title="Highest-risk transformers (failure probability × customers affected)" /></Tabs.Panel>
-        <Tabs.Panel value="plan"><PlanTab region={region} regionName={sm.regions.find(r => r.id === region)?.name} /></Tabs.Panel>
+        <Tabs.Panel value="types"><TypesTab region={region} /></Tabs.Panel>
+        <Tabs.Panel value="plan"><PlanTab region={region} regionName={regionName} /></Tabs.Panel>
+        <Tabs.Panel value="workorders"><WorkOrdersTab region={region} /></Tabs.Panel>
+        <Tabs.Panel value="model"><ModelTab /></Tabs.Panel>
       </Tabs>
-
-      <CircuitDrawer id={circuit} onClose={() => set("circuit", null)} />
       <ImportModal opened={importOpen} onClose={importCtl.close} />
     </>
   );
 }
 
-type SortKey = "risk" | "mean_hi" | "pct_poor" | "mean_age" | "expected_failures";
+type SortKey = "risk_all" | "mean_hi" | "pct_poor" | "mean_age" | "expected_failures";
 
-function CircuitsTab({ region, regionName, onOpen }: { region: string | null; regionName?: string; onOpen: (id: string) => void }) {
+function CircuitsTab({ region, regionName }: { region: string | null; regionName?: string }) {
   const { data } = useGet<CircuitHealth[]>(`/assets/circuits${region ? `?region=${region}` : ""}`);
   const routes = useRoutes();
-  const [sort, setSort] = useState<SortKey>("risk");
+  const geo = useGeo();
+  const go = useNavigate();
+  const [sort, setSort] = useState<SortKey>("risk_all");
   const [limit, setLimit] = useState(25);
   if (!data) return <Loading />;
+  const open = (c: CircuitHealth) => go(`/network?region=${c.region_id ?? ""}&sub=${c.substation_id ?? ""}&circuit=${c.id}`);
   const rows = [...data].sort((a, b) => (sort === "mean_hi" ? a.mean_hi - b.mean_hi : (b[sort] as number) - (a[sort] as number)));
   const byId = new Map(data.map(c => [c.id, c]));
   const lines = (routes.data?.feeders ?? []).filter(f => byId.has(f.id) && f.route.length)
     .sort((a, b) => byId.get(b.id)!.mean_hi - byId.get(a.id)!.mean_hi)
     .map(f => {
       const c = byId.get(f.id)!;
-      return { id: f.id, lines: f.route, color: hiColor(c.mean_hi), weight: 2 + c.pct_poor * 10,
-        popup: <div><b>{c.id}</b> · {c.substation} · {c.zone}<br />{fmt(c.xfmrs)} transformers · mean age {c.mean_age} y<br />
-          Health {Math.round(c.mean_hi)} · {pct(c.pct_poor)} poor/critical<br /><Button size="compact-xs" mt={4} onClick={() => onOpen(c.id)}>Open circuit</Button></div> };
+      return { id: f.id, lines: f.route, color: hiColor(c.mean_hi), weight: 2 + c.pct_poor * 10, onClick: () => open(c),
+        tooltip: `${c.id} · ${c.substation} · health ${Math.round(c.mean_hi)} · ${pct(c.pct_poor)} poor — click to open` };
     });
+  const hull = region ? geo.data?.regions.find(r => r.id === region)?.hull : geo.data?.state?.rings[0];
   return (
     <Stack>
       <Card padding="sm">
-        <TerritoryMap height={420} lines={lines} />
+        <TerritoryMap height={420} lines={lines} outline={geo.data?.state?.rings} fit={hull ?? null} />
         <Group gap="md" mt={6}>
-          <Text size="xs" c="dimmed">Circuit colour = mean transformer health; thicker = larger Poor/Critical share.</Text>
+          <Text size="xs" c="dimmed">Circuit colour = mean transformer health; thicker = larger Poor/Critical share. Click a circuit to open it.</Text>
           {[["#3ec46d", "≥ 70"], ["#f5a623", "55–70"], ["#f07a2e", "40–55"], ["#e0506a", "< 40"]].map(([c, l]) => (
             <Group key={l} gap={4}><div style={{ width: 10, height: 10, borderRadius: 2, background: c }} /><Text size="xs" c="dimmed">{l}</Text></Group>))}
         </Group>
@@ -161,36 +151,37 @@ function CircuitsTab({ region, regionName, onOpen }: { region: string | null; re
       <Card padding={0}>
         <Group p="md" pb={0} justify="space-between">
           <Text fw={600}>Circuits {regionName && <Badge ml={6} variant="light">{regionName}</Badge>} <Text span size="sm" c="dimmed">({data.length})</Text></Text>
-          <Select size="xs" w={210} value={sort} onChange={v => v && setSort(v as SortKey)} allowDeselect={false} data={[
-            { value: "risk", label: "Sort: customer risk" }, { value: "mean_hi", label: "Sort: worst health" }, { value: "pct_poor", label: "Sort: % poor/critical" },
+          <Select size="xs" w={210} value={sort} onChange={v => v && setSort(v as SortKey)} allowDeselect={false} aria-label="Sort circuits" data={[
+            { value: "risk_all", label: "Sort: customer risk" }, { value: "mean_hi", label: "Sort: worst health" }, { value: "pct_poor", label: "Sort: % poor/critical" },
             { value: "mean_age", label: "Sort: oldest" }, { value: "expected_failures", label: "Sort: expected failures" }]} />
         </Group>
-        <Table.ScrollContainer minWidth={980}>
+        <Table.ScrollContainer minWidth={1040}>
           <Table mt="xs" highlightOnHover>
             <Table.Thead><Table.Tr><Table.Th>Circuit</Table.Th><Table.Th>Substation · zone</Table.Th><Table.Th ta="right">Customers</Table.Th>
               <Table.Th ta="right">Transformers</Table.Th><Table.Th ta="right">Mean age</Table.Th><Table.Th w={150}>Health</Table.Th>
-              <Table.Th ta="right">Poor / critical</Table.Th><Table.Th ta="right">Past life</Table.Th><Table.Th ta="right">Failures / yr</Table.Th>
+              <Table.Th ta="right">Poor / critical</Table.Th><Table.Th ta="right">Poles poor</Table.Th><Table.Th ta="right">Switchgear poor</Table.Th>
               <Table.Th ta="right">Risk</Table.Th><Table.Th ta="right">Backlog</Table.Th></Table.Tr></Table.Thead>
             <Table.Tbody>{rows.slice(0, limit).map(c => (
-              <Table.Tr key={c.id} className="row-click" onClick={() => onOpen(c.id)}>
+              <Table.Tr key={c.id} className="row-click" onClick={() => open(c)}>
                 <Table.Td ff="monospace" fz="sm" fw={600}>{c.id}{c.critical_facility && <Tooltip label={c.critical_facility}><Badge ml={6} size="xs" color="red" variant="outline">critical</Badge></Tooltip>}</Table.Td>
                 <Table.Td><Text size="sm">{c.substation ?? "—"}</Text><Text size="xs" c="dimmed">{c.zone} · {c.region}</Text></Table.Td>
                 <Table.Td ta="right" className="tabular">{fmt(c.customers)}</Table.Td>
-                <Table.Td ta="right" className="tabular">{fmt(c.xfmrs)}</Table.Td>
+                <Table.Td ta="right" className="tabular">{fmt(c.units)}{c.unknown > 0 && <Text size="xs" c="dimmed">{c.unknown} unknown age</Text>}</Table.Td>
                 <Table.Td ta="right" className="tabular">{c.mean_age} y</Table.Td>
-                <Table.Td><Group gap={6} wrap="nowrap"><Progress value={c.mean_hi} color={hiColor(c.mean_hi)} size="sm" w={70} /><Text size="sm" fw={600}>{Math.round(c.mean_hi)}</Text></Group></Table.Td>
+                <Table.Td><Group gap={6} wrap="nowrap"><div style={{ width: 70, height: 6, borderRadius: 3, background: "var(--mantine-color-default-border)" }}>
+                  <div style={{ width: `${c.mean_hi}%`, height: 6, borderRadius: 3, background: hiColor(c.mean_hi) }} /></div><Text size="sm" fw={600}>{Math.round(c.mean_hi)}</Text></Group></Table.Td>
                 <Table.Td ta="right" className="tabular" c={c.pct_poor >= 0.25 ? "orange.5" : undefined}>{fmt(c.poor)} <Text span size="xs" c="dimmed">({pct(c.pct_poor)})</Text></Table.Td>
-                <Table.Td ta="right" className="tabular">{pct(c.pct_over_life)}</Table.Td>
-                <Table.Td ta="right" className="tabular">{c.expected_failures.toFixed(1)}</Table.Td>
-                <Table.Td ta="right" className="tabular">{c.risk.toFixed(1)}</Table.Td>
+                <Table.Td ta="right" className="tabular">{c.poles_poor}/{c.poles}</Table.Td>
+                <Table.Td ta="right" className="tabular">{c.switchgear_poor}/{c.switchgear}</Table.Td>
+                <Table.Td ta="right" className="tabular">{c.risk_all.toFixed(1)}</Table.Td>
                 <Table.Td ta="right" className="tabular">{money(c.replacement_capex)}</Table.Td>
               </Table.Tr>))}
             </Table.Tbody>
           </Table>
         </Table.ScrollContainer>
         <Group p="sm" justify="space-between">
-          <Text size="xs" c="dimmed">Risk = expected customer-outages a year from transformer failures (12-month failure probability × customers on each unit, doubled where a
-            critical facility is on the circuit). Click a circuit for its transformers.</Text>
+          <Text size="xs" c="dimmed">Risk = expected customer-outages a year from equipment failures on the circuit (12-month failure probability × customers each unit serves,
+            doubled where a critical facility is on the circuit).</Text>
           {rows.length > limit && <Button size="xs" variant="subtle" onClick={() => setLimit(l => l + 50)}>Show more ({rows.length - limit})</Button>}
         </Group>
       </Card>
@@ -200,21 +191,22 @@ function CircuitsTab({ region, regionName, onOpen }: { region: string | null; re
 
 function SubstationsTab({ region }: { region: string | null }) {
   const { data } = useGet<SubstationAsset[]>(`/assets/substations${region ? `?region=${region}` : ""}`);
+  const go = useNavigate();
   if (!data) return <Loading />;
   return (
     <Card padding={0}>
       <Table.ScrollContainer minWidth={1100}>
         <Table highlightOnHover>
-          <Table.Thead><Table.Tr><Table.Th>Unit</Table.Th><Table.Th>Region · zone</Table.Th><Table.Th ta="right">Rating</Table.Th><Table.Th ta="right">Age</Table.Th>
+          <Table.Thead><Table.Tr><Table.Th>Unit</Table.Th><Table.Th>Region · zone</Table.Th><Table.Th ta="right">Rating</Table.Th><Table.Th>Age</Table.Th>
             <Table.Th ta="right">DGA (TDCG)</Table.Th><Table.Th ta="right">Moisture</Table.Th><Table.Th ta="right">Faults</Table.Th><Table.Th ta="right">Peak load</Table.Th>
             <Table.Th>Health</Table.Th><Table.Th ta="right">Failure / yr</Table.Th><Table.Th>What drives it</Table.Th></Table.Tr></Table.Thead>
           <Table.Tbody>{data.map(a => (
-            <Table.Tr key={a.id}>
-              <Table.Td><Text size="sm" fw={600}>{a.name}</Text><Text size="xs" c="dimmed">{a.id} · {a.manufacturer}{a.ltc ? " · LTC" : ""} · {a.circuits} circuits</Text></Table.Td>
+            <Table.Tr key={a.id} className="row-click" onClick={() => go(`/asset/${encodeURIComponent(a.id)}`)}>
+              <Table.Td><Text size="sm" fw={600}>{a.name}</Text><Group gap={4}><AssetLink id={a.id} /><Text size="xs" c="dimmed">{a.manufacturer}{a.ltc ? " · LTC" : ""} · {a.circuits} circuits</Text></Group></Table.Td>
               <Table.Td><Text size="sm">{a.region ?? "—"}</Text><Text size="xs" c="dimmed">{a.zone}</Text></Table.Td>
               <Table.Td ta="right" className="tabular">{(a.rating_kva / 1000).toFixed(1)} MVA</Table.Td>
-              <Table.Td ta="right" className="tabular">{a.age} y<Text size="xs" c="dimmed">{a.install_year}</Text></Table.Td>
-              <Table.Td ta="right" className="tabular">{fmt(a.dga_tdcg_ppm)} ppm</Table.Td>
+              <Table.Td><AgeText a={a} /></Table.Td>
+              <Table.Td ta="right" className="tabular">{a.dga_tdcg_ppm != null ? `${fmt(a.dga_tdcg_ppm)} ppm` : <Text span size="xs" c="dimmed">no test</Text>}</Table.Td>
               <Table.Td ta="right" className="tabular">{a.oil_moisture_ppm ?? "—"} ppm</Table.Td>
               <Table.Td ta="right" className="tabular">{a.through_faults ?? "—"}</Table.Td>
               <Table.Td ta="right" className="tabular">{a.peak_load_pct != null ? `${Math.round(a.peak_load_pct)}%` : "—"}</Table.Td>
@@ -231,123 +223,76 @@ function SubstationsTab({ region }: { region: string | null }) {
   );
 }
 
-function AssetTable({ rows, title, showWhere }: { rows: Asset[]; title?: string; showWhere?: boolean }) {
+const TYPE_ORDER: AssetKind[] = ["pole", "recloser", "breaker", "dist_transformer", "power_transformer"];
+
+function TypesTab({ region }: { region: string | null }) {
+  const [kind, setKind] = useState<AssetKind>("pole");
+  const { data } = useGet<Asset[]>(`/assets/top?n=50&kind=${kind}${region ? `&region=${region}` : ""}`);
   return (
-    <Card padding={0}>
-      {title && <Text fw={600} p="md" pb={0}>{title}</Text>}
-      <Table.ScrollContainer minWidth={860}>
-        <Table mt="xs" highlightOnHover>
-          <Table.Thead><Table.Tr><Table.Th>Unit</Table.Th>{showWhere && <Table.Th>Where</Table.Th>}<Table.Th ta="right">Age</Table.Th><Table.Th ta="right">Rating</Table.Th>
-            <Table.Th ta="right">Inspection</Table.Th><Table.Th ta="right">Peak load</Table.Th><Table.Th>Health</Table.Th><Table.Th ta="right">Failure / yr</Table.Th>
-            <Table.Th>What drives it</Table.Th><Table.Th ta="right">Replace</Table.Th></Table.Tr></Table.Thead>
-          <Table.Tbody>{rows.map(a => (
-            <Table.Tr key={a.id}>
-              <Table.Td><Text size="sm" fw={600}>{a.name}</Text><Text size="xs" c="dimmed" ff="monospace">{a.id}</Text></Table.Td>
-              {showWhere && <Table.Td><Text size="sm">{a.feeder_id ?? a.substation_id}</Text><Text size="xs" c="dimmed">{a.kind === "power_transformer" ? "Substation" : "Circuit"}</Text></Table.Td>}
-              <Table.Td ta="right" className="tabular">{a.age} y</Table.Td>
-              <Table.Td ta="right" className="tabular">{a.rating_kva >= 1000 ? `${(a.rating_kva / 1000).toFixed(1)} MVA` : `${a.rating_kva} kVA`}</Table.Td>
-              <Table.Td ta="right" className="tabular">{a.inspection_score ? `${a.inspection_score}/5` : "—"}<Text size="xs" c="dimmed">{a.last_inspection ?? ""}</Text></Table.Td>
-              <Table.Td ta="right" className="tabular">{a.peak_load_pct != null ? `${Math.round(a.peak_load_pct)}%` : "—"}</Table.Td>
-              <Table.Td><HealthBadge hi={a.health_index} condition={a.condition} /></Table.Td>
-              <Table.Td ta="right" className="tabular">{pct(a.pof_12m, 1)}</Table.Td>
-              <Table.Td><Text size="xs" c="dimmed">{a.drivers.slice(0, 2).join(" · ") || "—"}</Text></Table.Td>
-              <Table.Td ta="right" className="tabular">{money(a.replacement_cost)}</Table.Td>
-            </Table.Tr>))}
-          </Table.Tbody>
-        </Table>
-      </Table.ScrollContainer>
-    </Card>
+    <Stack>
+      <SegmentedControl value={kind} onChange={v => setKind(v as AssetKind)} data={TYPE_ORDER.map(k => ({ value: k, label: KIND_PLURAL[k] }))} />
+      <Text size="sm" c="dimmed">{{ pole: "Wood, steel and concrete poles: remaining ground-line strength (NESC replacement below 67%), age and inspection.",
+        recloser: "Line reclosers: operations against rating, timing / contact-resistance test results, interrupter type and age.",
+        breaker: "Feeder breakers at substations: operations, test results, oil interrupters over 35 years.",
+        dist_transformer: "Distribution transformers: age, inspection, loading.", power_transformer: "Substation transformers: age, dissolved gas, moisture, faults, maintenance." }[kind]}</Text>
+      {!data ? <Loading /> : <AssetTable rows={data} showWhere title={`Highest-risk ${KIND_PLURAL[kind].toLowerCase()}`} />}
+    </Stack>
   );
 }
 
-const PAGE = 25;
-
-function CircuitDrawer({ id, onClose }: { id: string | null; onClose: () => void }) {
-  const [page, setPage] = useState(1);
-  const [sort, setSort] = useState("risk");
-  const { data: c } = useGet<CircuitHealthDetail>(id ? `/assets/circuits/${id}?sort=${sort}&limit=${PAGE}&offset=${(page - 1) * PAGE}` : null);
-  const { event } = useCurrentEvent();
-  const ev = useGet<StormEvent & { prediction: PredictionRun | null }>(id && event ? `/events/${event.id}` : null);
-  const pc: PredCircuit | undefined = ev.data?.prediction?.result.circuits?.find(x => x.id === id);
+function WorkOrdersTab({ region }: { region: string | null }) {
+  const [status, setStatus] = useState("open,scheduled");
+  const { data } = useGet<WorkOrder[]>(`/work-orders?status=${status}${region ? `&region=${region}` : ""}`);
   return (
-    <Drawer opened={!!id} onClose={() => { setPage(1); onClose(); }} position="right" size="xl" title={<Text fw={700}>Circuit {id}</Text>}>
-      {!c ? <Loading /> : (
-        <Stack>
-          <Text size="sm" c="dimmed">{c.substation} · {c.zone} · {c.region} region · {fmt(c.customers)} customers · {c.overhead_pct}% overhead
-            {c.critical_facility && <> · <Text span c="red.4">{c.critical_facility}</Text></>}</Text>
-          <SimpleGrid cols={4}>
-            <Stat label="Transformers" value={fmt(c.xfmrs)} hint={`mean age ${c.mean_age} y`} />
-            <Stat label="Mean health" value={Math.round(c.mean_hi)} color={c.mean_hi >= 70 ? "teal" : c.mean_hi >= 55 ? "yellow" : "red"} hint={`${pct(c.pct_over_life)} past design life`} />
-            <Stat label="Poor / critical" value={fmt(c.poor)} color="orange" hint={pct(c.pct_poor)} />
-            <Stat label="Failures / yr" value={c.expected_failures.toFixed(1)} color="red" hint={`backlog ${money(c.replacement_capex)}`} />
-          </SimpleGrid>
-          {pc && ev.data && (
-            <Alert color={pc.in_path ? "red" : "blue"} icon={<IconActivityHeartbeat size={18} />} title={`In ${ev.data.name}`}>
-              Predicted {fmt(pc.pred)} of {fmt(pc.customers)} customers out ({pct(pc.pct)}), back in about {Math.round(pc.eta_h)} h
-              ({Math.round(pc.low_h)}–{Math.round(pc.high_h)} h).{pc.in_path && ` On the EF${pc.path_ef} damage path: plan a rebuild.`}{" "}
-              {c.pct_poor >= 0.2 ? "Its older transformers raise both the outage share and the repair time." : "Its transformer fleet is in reasonable health."}
-            </Alert>)}
-          <Grid>
-            <Grid.Col span={6}>
-              <Text size="sm" fw={600} mb={6}>Age</Text>
-              <BarChart h={160} data={c.age_histogram} dataKey="decade" series={[{ name: "count", label: "Transformers", color: "brand.5" }]} tickLine="none" gridAxis="y" />
-            </Grid.Col>
-            <Grid.Col span={6}>
-              <Text size="sm" fw={600} mb={6}>Health index</Text>
-              <BarChart h={160} data={c.hi_histogram} dataKey="band" series={[{ name: "count", label: "Transformers", color: "teal.5" }]} tickLine="none" gridAxis="y" />
-            </Grid.Col>
-          </Grid>
-          <BandBar bands={c.bands} />
-          {c.power_transformers.length > 0 && <>
-            <Text size="sm" fw={600}>Substation {c.substation}: power transformers</Text>
-            <SimpleGrid cols={{ base: 1, sm: 2 }}>{c.power_transformers.map(a => (
-              <Card key={a.id} withBorder padding="sm">
-                <Group justify="space-between"><Text size="sm" fw={600}>{a.name}</Text><HealthBadge hi={a.health_index} condition={a.condition} /></Group>
-                <Text size="xs" c="dimmed">{(a.rating_kva / 1000).toFixed(1)} MVA · {a.manufacturer} · {a.install_year} ({a.age} y){a.ltc ? " · LTC" : ""}</Text>
-                <Text size="xs" mt={4}>DGA {fmt(a.dga_tdcg_ppm)} ppm · moisture {a.oil_moisture_ppm} ppm · {a.through_faults} through-faults · peak {Math.round(a.peak_load_pct ?? 0)}%</Text>
-                <Text size="xs" c="dimmed" mt={4}>{a.drivers.slice(0, 3).join(" · ")}</Text>
-              </Card>))}
-            </SimpleGrid>
-          </>}
-          <Group justify="space-between">
-            <Text size="sm" fw={600}>Distribution transformers</Text>
-            <Select size="xs" w={170} value={sort} onChange={v => { if (v) { setSort(v); setPage(1); } }} allowDeselect={false}
-              data={[{ value: "risk", label: "Highest risk first" }, { value: "health", label: "Worst health first" }, { value: "age", label: "Oldest first" }]} />
-          </Group>
-          <AssetTable rows={c.transformers} />
-          {c.xfmrs > PAGE && <Group justify="center"><Pagination size="sm" total={Math.ceil(c.xfmrs / PAGE)} value={page} onChange={setPage} /></Group>}
-        </Stack>
-      )}
-    </Drawer>
+    <Stack>
+      <SegmentedControl w={360} value={status} onChange={setStatus} data={[{ value: "open,scheduled", label: "Open" }, { value: "done", label: "Done" },
+        { value: "open,scheduled,done,cancelled", label: "All" }]} />
+      {!data ? <Loading /> : <WorkOrders rows={data} showAsset />}
+      <Text size="xs" c="dimmed">Create work orders from a unit's recommended actions (open any unit from the tables or the network explorer).</Text>
+    </Stack>
   );
 }
 
-function ImportModal({ opened, onClose }: { opened: boolean; onClose: () => void }) {
-  const sample = useGet<{ csv: string; fields: string[]; density: number }>(opened ? "/admin/assets/sample" : null);
-  const [csv, setCsv] = useState("");
-  const [replace, setReplace] = useState(false);
-  const imp = useAction((body: object) => api.post<{ added: number; updated: number; total: number }>("/admin/assets/import", body),
-    { success: r => `${r.added} added, ${r.updated} updated · ${fmt(r.total)} assets on file`, invalidate: ["/assets", "/events"] });
+function ModelTab() {
+  const { data } = useGet<HealthModel>("/assets/model");
+  const { can } = useAuth();
+  const [w, setW] = useState<Record<string, number> | null>(null);
+  const save = useAction((weights: Record<string, number>) => api.put<HealthModel>("/admin/assets/model", { weights }),
+    { success: "Weights saved — every unit re-scored", invalidate: ["/assets", "/events", "/network"] });
+  if (!data) return <Loading />;
+  const vals = w ?? data.weights;
   return (
-    <Modal opened={opened} onClose={onClose} title="Import asset register" size="lg">
-      <Stack>
-        <Alert color="gray" icon={<IconInfoCircle size={18} />}>One row per transformer, matched by <b>id</b> (updated) or added. Health, failure probability and risk are
-          recalculated on import. The sandbox register is synthetic (about one distribution transformer per {sample.data?.density ?? 10} customers).</Alert>
-        <Text size="xs" c="dimmed">Columns: {sample.data?.fields.join(", ")}</Text>
-        <Textarea autosize minRows={8} ff="monospace" value={csv} onChange={e => setCsv(e.currentTarget.value)}
-          placeholder={sample.data?.csv ?? "id,kind,feeder_id,substation_id,install_year,..."} />
-        <Group justify="space-between">
-          <Group gap="xs">
-            <Button size="xs" variant="subtle" onClick={() => setCsv(sample.data?.csv ?? "")}>Use example rows</Button>
-            <Switch size="xs" label="Replace the sandbox register" checked={replace} onChange={e => setReplace(e.currentTarget.checked)} />
-          </Group>
-          <Group gap="xs">
-            <Button variant="default" onClick={onClose}>Cancel</Button>
-            <Button loading={imp.isPending} disabled={csv.trim().length < 10} onClick={async () => { await imp.mutateAsync({ csv, replace }); onClose(); setCsv(""); }}>Import</Button>
-          </Group>
-        </Group>
-      </Stack>
-    </Modal>
+    <Grid gutter="lg">
+      <Grid.Col span={{ base: 12, lg: 7 }}>
+        <Card>
+          <SectionTitle right={<Badge color="yellow" variant="light">{data.status}</Badge>}>How the health score works</SectionTitle>
+          <List size="sm" spacing={4}>{data.notes.map(n => <List.Item key={n}>{n}</List.Item>)}</List>
+          <Text size="sm" fw={600} mt="md">Design life used for age</Text>
+          <Group gap="xs" mt={4}>{Object.entries(data.design_life).map(([k, v]) => <Badge key={k} variant="outline" color="gray">{k}: {v} y</Badge>)}</Group>
+          <Text size="sm" fw={600} mt="md">Failure probability (Weibull)</Text>
+          <Group gap="xs" mt={4}>{Object.entries(data.weibull).map(([k, v]) => <Badge key={k} variant="outline" color="gray">{k}: η {v.eta_y} y, β {v.beta}</Badge>)}</Group>
+          <Alert mt="md" color="gray" icon={<IconInfoCircle size={18} />} p="xs">
+            <Text size="xs">Each penalty (points off 100) is multiplied by its weight. Weights and band thresholds are a starting point for the utility's asset-management team to
+              calibrate against its own failure records; changing them re-scores every unit and feeds the storm predictions and replacement plan.</Text></Alert>
+        </Card>
+      </Grid.Col>
+      <Grid.Col span={{ base: 12, lg: 5 }}>
+        <Card>
+          <SectionTitle>Weights</SectionTitle>
+          <Stack gap="xs">{Object.keys(data.defaults).map(k => (
+            <NumberInput key={k} label={data.labels[k]} size="xs" step={k.startsWith("band_") || k === "age_weight" ? 1 : 0.1} decimalScale={2}
+              min={k === "age_weight" ? 5 : k.startsWith("band_") ? 1 : 0} max={k === "age_weight" || k.startsWith("band_") ? 99 : 5}
+              value={vals[k]} disabled={!can("assets.manage")} onChange={v => setW({ ...vals, [k]: Number(v) })}
+              rightSection={vals[k] !== data.defaults[k] ? <Tooltip label={`Default ${data.defaults[k]}`}><Text size="xs" c="yellow.6">●</Text></Tooltip> : undefined} />))}
+          </Stack>
+          {can("assets.manage") ? (
+            <Group justify="flex-end" mt="md">
+              <Button variant="default" size="xs" onClick={() => setW({ ...data.defaults })}>Reset to defaults</Button>
+              <Button size="xs" loading={save.isPending} disabled={!w} onClick={async () => { await save.mutateAsync(vals); setW(null); }}>Save and re-score</Button>
+            </Group>) : <Text size="xs" c="dimmed" mt="sm">Only asset managers can change the weights.</Text>}
+        </Card>
+      </Grid.Col>
+    </Grid>
   );
 }
 
@@ -358,28 +303,29 @@ function PlanTab({ region, regionName }: { region: string | null; regionName?: s
   const [budgetM, setBudgetM] = useState(20);
   const [kind, setKind] = useState("all");
   const [debounced] = useDebouncedValue(budgetM, 350);
+  const go = useNavigate();
   const { data: p, isFetching } = useGet<ReplacementPlan>(
     `/assets/plan?budget=${debounced * 1e6}${region ? `&region=${region}` : ""}${kind !== "all" ? `&kind=${kind}` : ""}`);
   return (
     <Stack>
       <Card>
         <Grid align="center">
-          <Grid.Col span={{ base: 12, md: 7 }}>
+          <Grid.Col span={{ base: 12, md: 6 }}>
             <Text size="sm" fw={600}>Replacement budget: {money(budgetM * 1e6)} {regionName && <Badge ml={6} variant="light">{regionName}</Badge>}</Text>
-            <Slider mt="sm" mb="lg" min={1} max={200} step={1} value={budgetM} onChange={setBudgetM} label={v => money(v * 1e6)}
+            <Slider mt="sm" mb="lg" min={1} max={200} step={1} value={budgetM} onChange={setBudgetM} label={v => money(v * 1e6)} aria-label="Replacement budget"
               marks={MARKS.map(m => ({ value: m, label: `$${m}M` }))} />
           </Grid.Col>
-          <Grid.Col span={{ base: 12, md: 5 }}>
-            <SegmentedControl fullWidth value={kind} onChange={setKind} data={[{ value: "all", label: "All transformers" },
-              { value: "power_transformer", label: "Substation" }, { value: "dist_transformer", label: "Distribution" }]} />
+          <Grid.Col span={{ base: 12, md: 6 }}>
+            <Select value={kind} onChange={v => v && setKind(v)} allowDeselect={false} aria-label="Equipment type"
+              data={[{ value: "all", label: "All equipment types" }, ...TYPE_ORDER.map(k => ({ value: k, label: KIND_PLURAL[k] }))]} />
           </Grid.Col>
         </Grid>
         <Text size="xs" c="dimmed">Units are ranked by customer risk removed per dollar, averaged over now, +5 and +10 years so fast-ageing units count, then funded in
-          order until the budget runs out. Click a region in the table above to plan for one region.</Text>
+          order until the budget runs out. Pick a region at the top of the page to plan for one region.</Text>
       </Card>
-      {!p ? <Loading /> : <>
+      {!p ? <Loading /> : !p.fleet ? <Alert color="gray">No units in scope.</Alert> : <>
         <SimpleGrid cols={{ base: 2, md: 5 }} style={{ opacity: isFetching ? 0.6 : 1 }}>
-          <Stat label="Units replaced" value={fmt(p.units)} hint={`${p.by_kind.power_transformer ?? 0} substation · ${fmt(p.by_kind.dist_transformer ?? 0)} distribution`} />
+          <Stat label="Units replaced" value={fmt(p.units)} hint={Object.entries(p.by_kind).filter(([, n]) => n).map(([k, n]) => `${fmt(n)} ${KIND_LABEL[k as AssetKind].toLowerCase()}`).join(" · ") || "—"} />
           <Stat label="Spend" value={money(p.cost)} hint={`of ${money(p.budget)}`} />
           <Stat label="Customer risk removed" value={pct(p.risk_reduced_pct)} color="teal" hint="customer-outages a year from failures" />
           <Stat label="Failures avoided / yr" value={fmt(p.failures_avoided)} color="teal" hint="expected, this year" />
@@ -391,8 +337,7 @@ function PlanTab({ region, regionName }: { region: string | null; regionName?: s
               <SectionTitle>What each budget buys</SectionTitle>
               <LineChart h={220} data={p.frontier.map(f => ({ budget: `$${f.budget / 1e6}M`, "Risk removed": Math.round(f.risk_reduced_pct * 100) }))}
                 dataKey="budget" series={[{ name: "Risk removed", color: "teal.5" }]} unit="%" curveType="monotone" gridAxis="y" />
-              <Text size="xs" c="dimmed" mt="xs">Diminishing returns: the first dollars go to the few substation units and failing transformers carrying most of the
-                customer risk.</Text>
+              <Text size="xs" c="dimmed" mt="xs">Diminishing returns: the first dollars go to the few substation units and failing equipment carrying most of the customer risk.</Text>
             </Card>
           </Grid.Col>
           <Grid.Col span={{ base: 12, lg: 6 }}>
@@ -430,10 +375,10 @@ function PlanTab({ region, regionName }: { region: string | null; regionName?: s
               <Table.Thead><Table.Tr><Table.Th>Unit</Table.Th><Table.Th>Where</Table.Th><Table.Th ta="right">Age</Table.Th><Table.Th>Health</Table.Th>
                 <Table.Th>Why</Table.Th><Table.Th ta="right">Cost</Table.Th><Table.Th ta="right">Risk removed / yr</Table.Th></Table.Tr></Table.Thead>
               <Table.Tbody>{p.items.map(a => (
-                <Table.Tr key={a.id}>
-                  <Table.Td><Text size="sm" fw={600}>{a.name}</Text><Text size="xs" c="dimmed" ff="monospace">{a.id}</Text></Table.Td>
+                <Table.Tr key={a.id} className="row-click" onClick={() => go(`/asset/${encodeURIComponent(a.id)}`)}>
+                  <Table.Td><Text size="sm" fw={600}>{a.name}</Text><AssetLink id={a.id} /></Table.Td>
                   <Table.Td><Text size="sm">{a.where}</Text><Text size="xs" c="dimmed">{a.region}</Text></Table.Td>
-                  <Table.Td ta="right">{a.age} y</Table.Td>
+                  <Table.Td ta="right">{a.age != null ? `${a.age} y` : <Text span size="xs" c="dimmed">unknown</Text>}</Table.Td>
                   <Table.Td><HealthBadge hi={a.health_index} condition={a.condition} /></Table.Td>
                   <Table.Td><Text size="xs" c="dimmed">{a.drivers.join(" · ")}</Text></Table.Td>
                   <Table.Td ta="right">{money(a.cost)}</Table.Td>
@@ -443,9 +388,40 @@ function PlanTab({ region, regionName }: { region: string | null; regionName?: s
             </Table>
           </Table.ScrollContainer>
           <Text size="xs" c="dimmed" p="sm">Risk removed = expected customer-outages a year the unit would cause (failure probability × customers it serves, doubled for
-            critical facilities) minus a new unit's. The no-action outlook keeps today's inspection and oil results, so real deterioration would be faster.</Text>
+            critical facilities) minus a new unit's. The no-action outlook keeps today's inspection and test results, so real deterioration would be faster.</Text>
         </Card>
       </>}
     </Stack>
+  );
+}
+
+function ImportModal({ opened, onClose }: { opened: boolean; onClose: () => void }) {
+  const sample = useGet<{ csv: string; fields: string[]; density: number }>(opened ? "/admin/assets/sample" : null);
+  const [csv, setCsv] = useState("");
+  const [replace, setReplace] = useState(false);
+  const imp = useAction((body: object) => api.post<{ added: number; updated: number; total: number; missing_install_year: number }>("/admin/assets/import", body),
+    { success: r => `${r.added} added, ${r.updated} updated · ${fmt(r.total)} units on file${r.missing_install_year ? ` · ${r.missing_install_year} without an install year (shown as Unknown)` : ""}`,
+      invalidate: ["/assets", "/events", "/network"] });
+  return (
+    <Modal opened={opened} onClose={onClose} title="Import asset register" size="lg">
+      <Stack>
+        <Alert color="gray" icon={<IconInfoCircle size={18} />}>One row per unit — transformers, breakers, reclosers or poles — matched by <b>id</b> (updated) or added.
+          Leave install_year or the inspection blank when unknown: those units are shown as Unknown rather than guessed. Health, failure probability and risk are
+          recalculated on import. The sandbox register is synthetic (about one distribution transformer per {sample.data?.density ?? 10} customers).</Alert>
+        <Text size="xs" c="dimmed">Columns: {sample.data?.fields.join(", ")}</Text>
+        <Textarea autosize minRows={8} ff="monospace" value={csv} onChange={e => setCsv(e.currentTarget.value)} aria-label="CSV rows"
+          placeholder={sample.data?.csv ?? "id,kind,feeder_id,substation_id,install_year,..."} />
+        <Group justify="space-between">
+          <Group gap="xs">
+            <Button size="xs" variant="subtle" onClick={() => setCsv(sample.data?.csv ?? "")}>Use example rows</Button>
+            <Switch size="xs" label="Replace the sandbox register" checked={replace} onChange={e => setReplace(e.currentTarget.checked)} />
+          </Group>
+          <Group gap="xs">
+            <Button variant="default" onClick={onClose}>Cancel</Button>
+            <Button loading={imp.isPending} disabled={csv.trim().length < 10} onClick={async () => { await imp.mutateAsync({ csv, replace }); onClose(); setCsv(""); }}>Import</Button>
+          </Group>
+        </Group>
+      </Stack>
+    </Modal>
   );
 }

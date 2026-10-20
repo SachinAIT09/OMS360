@@ -48,6 +48,13 @@ def search(q: str, s: Session = Depends(get_session), _: User = Depends(current_
     out += [{"type": "crew", "id": c.id, "label": c.code, "sub": f"{c.company} · {c.status}"}
             for c in s.scalars(select(Crew).where(or_(Crew.code.ilike(like), Crew.lead.ilike(like))).limit(5)).all()]
     out += [{"type": "event", "id": e.id, "label": e.name, "sub": e.status} for e in s.scalars(select(StormEvent).where(StormEvent.name.ilike(like)).limit(4)).all()]
+    from ..models import Asset, Substation
+    out += [{"type": "asset", "id": a.id, "label": a.id, "sub": f"{a.name} · {a.condition}"}
+            for a in s.scalars(select(Asset).where(Asset.id.ilike(like)).order_by(Asset.id).limit(5)).all()]
+    out += [{"type": "substation", "id": x.id, "label": x.name, "sub": x.id}
+            for x in s.scalars(select(Substation).where(or_(Substation.id.ilike(like), Substation.name.ilike(like))).limit(3)).all()]
+    out += [{"type": "circuit", "id": fid, "label": fid, "sub": "circuit"}
+            for fid in s.scalars(select(Feeder.id).where(Feeder.id.ilike(like)).order_by(Feeder.id).limit(4)).all()]
     return out
 
 

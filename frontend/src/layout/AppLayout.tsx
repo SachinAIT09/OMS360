@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { Suspense, useEffect, useRef, useState } from "react";
 import { Navigate, NavLink as RouterLink, Outlet, useLocation, useNavigate } from "react-router-dom";
 import {
   ActionIcon, AppShell, Avatar, Badge, Box, Burger, Center, Divider, Group, Image, Indicator, Loader, Menu, NavLink, ScrollArea,
@@ -7,7 +7,7 @@ import {
 import { useDisclosure, useMediaQuery } from "@mantine/hooks";
 import { Spotlight, type SpotlightActionData } from "@mantine/spotlight";
 import {
-  IconActivityHeartbeat, IconBell, IconBolt, IconBrain, IconBroadcast, IconChartBar, IconCloudStorm, IconExternalLink, IconLayoutDashboard, IconLogout, IconMoon,
+  IconActivityHeartbeat, IconBell, IconHierarchy3, IconBolt, IconBrain, IconBroadcast, IconChartBar, IconCloudStorm, IconExternalLink, IconLayoutDashboard, IconLogout, IconMoon,
   IconSearch, IconSettings, IconSun, IconTool, IconTruck,
 } from "@tabler/icons-react";
 import { useQueryClient } from "@tanstack/react-query";
@@ -33,6 +33,7 @@ const NAV = [
   { group: "Customers", items: [{ to: "/communications", label: "Communications", icon: IconBroadcast }] },
   { group: "Intelligence", items: [
     { to: "/jarvis", label: "AI Assistant", icon: IconBrain },
+    { to: "/network", label: "Network Explorer", icon: IconHierarchy3 },
     { to: "/asset-health", label: "Asset Health", icon: IconActivityHeartbeat },
     { to: "/reports", label: "Reports", icon: IconChartBar },
   ] },
@@ -85,6 +86,8 @@ function Shell() {
           <EventSwitcher />
           <Box style={{ flex: 1 }} />
           <SearchButton />
+          <Tooltip label="Network, customers, equipment records and storm scenarios are synthetic demonstration data — not utility operational data or official forecasts."
+            multiline w={320}><Badge variant="light" color="yellow" visibleFrom="sm" style={{ textTransform: "none" }}>Simulation data</Badge></Tooltip>
           <WeatherChip />
           <Bell />
           <ThemeToggle />
@@ -117,7 +120,7 @@ function Shell() {
       </AppShell.Navbar>
 
       <AppShell.Main>
-        <Outlet />
+        <Suspense fallback={<Center py={80}><Loader /></Center>}><Outlet /></Suspense>
       </AppShell.Main>
     </AppShell>
   );
@@ -163,16 +166,17 @@ function SearchButton() {
   const { data = [], isFetching } = useGet<{ type: string; id: number; label: string; sub: string }[]>(q.trim().length >= 2 ? `/search?q=${encodeURIComponent(q.trim())}` : null);
   const pages: SpotlightActionData[] = [
     ["/", "Overview"], ["/events", "Storm events"], ["/outages", "Outages"], ["/restoration", "Restoration & ETR"], ["/crews", "Crews & mutual aid"],
-    ["/communications", "Communications"], ["/jarvis", "AI Assistant"], ["/asset-health", "Asset health"], ["/reports", "Reports"],
+    ["/communications", "Communications"], ["/jarvis", "AI Assistant"], ["/network", "Network explorer"], ["/asset-health", "Asset health"], ["/reports", "Reports"],
   ].map(([to, l]) => ({ id: `p${to}`, label: l, description: "Go to page", onClick: () => go(to) }));
   const results: SpotlightActionData[] = data.map(r => ({
     id: `${r.type}${r.id}`, label: r.label, description: `${r.type} · ${r.sub}`,
-    onClick: () => go(r.type === "outage" ? `/outages?open=${r.id}` : r.type === "crew" ? `/crews?q=${r.label}` : `/events/${r.id}`),
+    onClick: () => go(r.type === "outage" ? `/outages?open=${r.id}` : r.type === "crew" ? `/crews?q=${r.label}` : r.type === "asset" ? `/asset/${r.id}`
+      : r.type === "substation" ? `/network?sub=${r.id}` : r.type === "circuit" ? `/network?circuit=${r.id}` : `/events/${r.id}`),
   }));
   return (
     <>
       <Spotlight actions={q.trim().length >= 2 ? results : pages} query={q} onQueryChange={setQ} shortcut={["mod + K", "/"]} filter={(_, a) => a}
-        nothingFound={isFetching ? "Searching…" : "Nothing found"} searchProps={{ leftSection: <IconSearch size={18} />, placeholder: "Ticket number, feeder, crew code, event…" }} />
+        nothingFound={isFetching ? "Searching…" : "Nothing found"} searchProps={{ leftSection: <IconSearch size={18} />, placeholder: "Ticket, circuit, substation, asset ID, crew code, event…" }} />
     </>
   );
 }

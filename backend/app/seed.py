@@ -104,6 +104,8 @@ def seed_if_empty(s: Session) -> None:
     _early_bands(s, rng, kyle, now)
     _pre_storm_comms(s, kyle, now)
     s.commit()
+    from .services.asset_history import backfill
+    backfill(s)  # history tickets that named a transformer or pole: confirmed damage and replacement on that unit
 
 
 def ensure_demo_activity(s: Session) -> None:

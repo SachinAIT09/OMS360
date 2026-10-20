@@ -316,20 +316,20 @@ def _assets(s: Session, q: str, p: dict | None) -> dict:
                       f"(oldest {d['oldest']} y), mean health index **{d['mean_hi']:.0f}**; {d['poor']} Poor/Critical ({pct(d['pct_poor'])}), "
                       f"{pct(d['pct_over_life'])} past design life. Expected failures in 12 months: **{d['expected_failures']:.1f}**."
                       + (f" In this storm it is predicted to lose {fmt(pc['pred'])} customers." if pc else ""),
-                      [f"{a['id']} — {a['name']}, {a['age']} y, HI {a['health_index']:.0f} ({a['condition']}): {', '.join(a['drivers'][:2])}" for a in d["transformers"]],
-                      [_nav("Open circuit", f"/asset-health?circuit={fid}")], f"Circuit {fid} has {d['poor']} transformers in poor or critical condition.")
+                      [f"{a['id']} — {a['name']}, {_age(a)}, {_hi(a)}: {', '.join(a['drivers'][:2] or a['gaps'][:1])}" for a in d["transformers"]],
+                      [_nav("Open circuit", f"/network?circuit={fid}")], f"Circuit {fid} has {d['poor']} transformers in poor or critical condition.")
     regions = assets.region_health(s)
     r = next((r for r in regions if re.search(rf"\b{re.escape(r['name'].lower())}\b", q)), None)
     if r:
         rows = [c for c in assets.circuit_health(s, region=r["id"])][:5]
-        oldest = sorted(assets.substations(s, region=r["id"]), key=lambda a: -a["age"])[:2]
+        oldest = sorted(assets.substations(s, region=r["id"]), key=lambda a: -(a["age"] or 0))[:2]
         return _reply(f"**{r['name']} region**: {fmt(r['xfmrs'])} distribution transformers on {r['circuits']} circuits, mean age **{r['mean_age']:.0f} y**, "
                       f"mean health index {r['mean_hi']:.0f}; **{fmt(r['poor'])} Poor/Critical** ({pct(r['pct_poor'])}). "
                       f"{r['power_transformers']} substation power transformers (mean age {r['power_mean_age']:.0f} y, {r['power_poor']} Poor/Critical). "
                       f"Replacement backlog for Poor/Critical units: **${r['replacement_capex'] / 1e6:.1f}M**.",
                       [f"Circuit {c['id']} ({c['zone']}): {c['poor']} Poor/Critical, mean age {c['mean_age']:.0f} y, risk {c['risk']:.1f}" for c in rows]
-                      + [f"Oldest substation unit: {a['name']} — {a['age']} y, HI {a['health_index']:.0f} ({a['condition']})" for a in oldest],
-                      [_nav("Asset health", f"/asset-health?region={r['id']}")], f"The {r['name']} region has {r['poor']} transformers in poor or critical condition.")
+                      + [f"Oldest substation unit: {a['name']} — {_age(a)}, {_hi(a)}" for a in oldest],
+                      [_nav("Open region", f"/network?region={r['id']}")], f"The {r['name']} region has {r['poor']} transformers in poor or critical condition.")
     sm = assets.summary(s)
     d, pw = sm["distribution"], sm["power"]
     top = assets.top_risk(s, 3)
@@ -338,5 +338,13 @@ def _assets(s: Session, q: str, p: dict | None) -> dict:
                   f"{fmt(d['poor'])} Poor/Critical. **{pw['xfmrs']} substation power transformers**, mean age {pw['mean_age']:.0f} y, {pw['poor']} Poor/Critical. "
                   f"Expected failures in the next 12 months: {d['expected_failures'] + pw['expected_failures']:.0f}. "
                   + (f"Worst region: **{worst[0]['name']}** ({pct(worst[0]['pct_poor'])} Poor/Critical)." if worst else ""),
-                  [f"Highest risk: {a['name']} ({a['id']}) — {a['age']} y, HI {a['health_index']:.0f}, {', '.join(a['drivers'][:2])}" for a in top],
+                  [f"Highest risk: {a['name']} ({a['id']}) — {_age(a)}, {_hi(a)}, {', '.join(a['drivers'][:2])}" for a in top],
                   [_nav("Asset health", "/asset-health")], f"{fmt(d['poor'])} distribution transformers are in poor or critical condition.")
+
+
+def _age(a: dict) -> str:
+    return f"{a['age']} y" if a.get("age") is not None else "age not recorded"
+
+
+def _hi(a: dict) -> str:
+    return f"HI {a['health_index']:.0f} ({a['condition']})" if a.get("health_index") is not None else "health unknown"

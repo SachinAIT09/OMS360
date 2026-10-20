@@ -277,6 +277,14 @@ async def import_nhc(body: ImportIn, s: Session = Depends(get_session), user: Us
     return serial.event(e)
 
 
+@router.get("/events/{event_id}/impact")
+def impact(event_id: int, s: Session = Depends(get_session), _: User = Depends(current_user)):
+    """Network impact of the storm in one place: regions, substations and circuits on the predicted paths, assets to inspect,
+    damage confirmed in the field so far, critical facilities."""
+    from ..services.asset_history import storm_impact
+    return storm_impact(s, get_event(s, event_id))
+
+
 # ---------------------------------------------------------------- NWS (tornado warnings) and surveyed damage paths
 @router.get("/nws/alerts")
 async def nws_alerts(_: User = Depends(current_user)):
@@ -310,7 +318,8 @@ def _create_from_warning(s: Session, a: dict, user: User) -> dict:
     now = utcnow()
     path = nws.warning_path(a, now)
     mv = a.get("motion") or {}
-    area = a["area"].split(";")[0].strip() or "storm"
+    counties = [c.strip() for c in a["area"].split(";") if c.strip()]
+    area = (", ".join(counties[:2]) + (f" +{len(counties) - 2}" if len(counties) > 2 else "")) or "storm"
     e = StormEvent(name=f"Tornado Warning — {area}"[:80], kind=TORNADO, source="nws", nhc_id=key, category=path["ef"],
                    max_wind_mph=EF_WIND[path["ef"]] + 10, pressure_mb=995, lat=path["points"][0][0], lng=path["points"][0][1],
                    movement=f"{nhc._compass(mv['heading_deg'])} at {mv['speed_mph']} mph" if mv else "", landfall_at=path["touchdown"],

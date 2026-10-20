@@ -113,6 +113,9 @@ def init_db() -> None:
         ensure_demo_activity(s)
         ensure_rain_demo(s)
         ensure_forecast_demo(s)
+        from .services import asset_history, assets
+        assets.init_model(s)  # asset-health weights from settings
+        asset_history.backfill(s)
 
 
 DEMO_ADMINS = [

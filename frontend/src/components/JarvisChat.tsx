@@ -8,8 +8,12 @@ import { invalidate } from "../api/hooks";
 import type { JarvisAction, JarvisMessage } from "../api/types";
 import { Rich } from "./common";
 
-type SR = { lang: string; interimResults: boolean; start: () => void; onresult: (e: any) => void; onerror: (e: any) => void; onend: () => void };
-const SpeechRecognition: (new () => SR) | undefined = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
+/** The parts of the browser speech-recognition API we use (not in TypeScript's DOM types). */
+type SRResult = ArrayLike<{ transcript: string }> & { isFinal: boolean };
+type SREvent = { results: ArrayLike<SRResult> };
+type SR = { lang: string; interimResults: boolean; start: () => void; onresult: (e: SREvent) => void; onerror: (e: { error: string }) => void; onend: () => void };
+const speechWindow = window as unknown as { SpeechRecognition?: new () => SR; webkitSpeechRecognition?: new () => SR };
+const SpeechRecognition: (new () => SR) | undefined = speechWindow.SpeechRecognition || speechWindow.webkitSpeechRecognition;
 
 export function speak(text: string, onStart?: () => void, onEnd?: () => void) {
   if (!("speechSynthesis" in window) || !text) return;
@@ -47,12 +51,12 @@ export function useVoiceInput(onText: (t: string) => void, onFinal: (t: string) 
     const r = new SpeechRecognition();
     r.lang = "en-US"; r.interimResults = true;
     setListening(true);
-    r.onresult = (e: any) => {
-      const t = Array.from(e.results as ArrayLike<any>).map((x: any) => x[0].transcript).join("");
+    r.onresult = e => {
+      const t = Array.from(e.results).map(x => x[0].transcript).join("");
       onText(t);
       if (e.results[e.results.length - 1].isFinal) onFinal(t);
     };
-    r.onerror = (e: any) => notifications.show({ message: `Voice: ${e.error}` });
+    r.onerror = e => notifications.show({ message: `Voice: ${e.error}` });
     r.onend = () => setListening(false);
     r.start();
   };

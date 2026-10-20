@@ -94,7 +94,7 @@ export interface Recommendation {
 }
 
 export interface Outage {
-  id: number; number: string; event_id: number | null; zone_id: string; zone: string; feeder_id: string; device: string; cause: string; damage: string;
+  id: number; number: string; event_id: number | null; zone_id: string; zone: string; feeder_id: string; asset_id?: string | null; device: string; cause: string; damage: string;
   customers: number; priority: "critical" | "high" | "normal"; facility_id: number | null; status: OutageStatus; source: string; lat: number; lng: number;
   crew: { id: number; code: string; company: string } | null; reported_at: string; assigned_at: string | null; started_at: string | null;
   restored_at: string | null; etr_at: string | null; etr_committed: boolean; etr_override: boolean; notes: string;
@@ -145,33 +145,91 @@ export interface NhcStorm {
 }
 
 // ---------------------------------------------------------------- asset age and health
-export type Condition = "Good" | "Fair" | "Poor" | "Critical";
+export type Condition = "Good" | "Fair" | "Poor" | "Critical" | "Unknown";
+export type AssetKind = "power_transformer" | "dist_transformer" | "breaker" | "recloser" | "pole";
 export interface AssetRollup {
-  xfmrs: number; mean_age: number; oldest: number; mean_hi: number; poor: number; critical: number; pct_poor: number; pct_over_life: number;
-  expected_failures: number; risk: number; replacement_capex: number;
+  xfmrs: number; units: number; mean_age: number; oldest: number; mean_hi: number; poor: number; critical: number; pct_poor: number;
+  pct_over_life: number; expected_failures: number; risk: number; replacement_capex: number; unknown: number; damaged: number;
 }
 export interface RegionHealth extends AssetRollup {
-  id: string; name: string; circuits: number; power_transformers: number; power_poor: number; power_mean_age: number;
+  id: string; name: string; circuits: number; substations: number; power_transformers: number; power_poor: number; power_mean_age: number;
+  all_units: number; all_poor: number; all_damaged: number; all_risk: number;
 }
 export interface CircuitHealth extends AssetRollup {
   id: string; zone_id: string; zone: string; region_id: string | null; region: string | null; substation_id: string | null; substation: string | null;
   customers: number; overhead_pct: number | null; critical_facility: string | null;
+  poles: number; poles_poor: number; switchgear: number; switchgear_poor: number; risk_all: number;
 }
 export interface Asset {
-  id: string; kind: "power_transformer" | "dist_transformer"; name: string; substation_id: string | null; feeder_id: string | null; zone_id: string;
-  lat: number; lng: number; install_year: number; age: number; manufacturer: string; rating_kva: number; mounting: string; phases: number;
-  last_inspection: number | null; inspection_score: number | null; peak_load_pct: number | null; dga_tdcg_ppm: number | null;
-  oil_moisture_ppm: number | null; through_faults: number | null; ltc: boolean; maintenance_overdue: boolean;
-  health_index: number; condition: Condition; pof_12m: number; risk_score: number; replacement_cost: number; drivers: string[];
+  id: string; kind: AssetKind; kind_label: string; name: string; substation_id: string | null; feeder_id: string | null; zone_id: string;
+  lat: number; lng: number; install_year: number | null; age: number | null; age_reference: string; manufacturer: string; rating_kva: number;
+  mounting: string; phases: number; last_inspection: number | null; inspection_score: number | null; peak_load_pct: number | null;
+  dga_tdcg_ppm: number | null; oil_moisture_ppm: number | null; through_faults: number | null; ltc: boolean; maintenance_overdue: boolean;
+  details: { material?: string; height_ft?: number; strength_pct?: number; strength_test_year?: number; interrupter?: string; operations?: number;
+    rated_operations?: number; last_test_year?: number; test_result?: string };
+  source: "sandbox" | "imported"; status: "in_service" | "damaged";
+  health_index: number | null; condition: Condition; pof_12m: number; risk_score: number; replacement_cost: number; drivers: string[];
+  gaps: string[]; confidence: "high" | "medium" | "low";
 }
 export interface SubstationAsset extends Asset { substation: string; region_id: string | null; region: string | null; zone: string | null; circuits: number }
+export interface KindRollup extends AssetRollup { kind: AssetKind; label: string; bands?: Record<Condition, number> }
 export interface AssetSummary {
-  distribution: AssetRollup; power: AssetRollup; bands: Record<Condition, number>; power_bands: Record<Condition, number>;
-  age_histogram: { decade: string; count: number }[]; regions: RegionHealth[]; replacement_capex: number; density: number; top_risk: Asset[];
+  region: string | null; distribution: AssetRollup; power: AssetRollup; all: AssetRollup; by_kind: KindRollup[];
+  bands: Record<Condition, number>; power_bands: Record<Condition, number>; age_histogram: { decade: string; count: number }[];
+  regions: RegionHealth[]; replacement_capex: number; density: number; reference_date: string; sources: Record<string, number>;
+  open_work_orders: number; top_risk: Asset[]; model_status: string;
 }
 export interface CircuitHealthDetail extends CircuitHealth {
-  route: [number, number][][] | null; bands: Record<Condition, number>; age_histogram: { decade: string; count: number }[];
-  hi_histogram: { band: string; count: number }[]; transformers: Asset[]; offset: number; limit: number; power_transformers: Asset[];
+  route: [number, number][][] | null; route_source: string | null; bands: Record<Condition, number>; age_histogram: { decade: string; count: number }[];
+  hi_histogram: { band: string; count: number }[]; kinds: KindRollup[]; list_kind: AssetKind; list_total: number;
+  transformers: Asset[]; offset: number; limit: number; power_transformers: Asset[];
+}
+export interface SubstationRollup {
+  id: string; name: string; zone_id: string; zone: string | null; region_id: string | null; region: string | null; lat: number; lng: number;
+  circuits: number; customers: number; power_transformers: number; power_poor: number; breakers: number; breakers_poor: number;
+  worst_hi: number | null; dist_mean_hi: number | null; dist_poor: number; risk: number;
+}
+export interface SubstationDetail extends SubstationRollup { circuits_detail: CircuitHealth[]; units: Asset[] }
+export interface AssetMarker { id: string; kind: AssetKind; name: string; lat: number; lng: number; condition: Condition; health_index: number | null; status: string }
+export interface WorkOrder {
+  id: number; asset_id: string; kind: string; title: string; reason: string; priority: "Critical" | "High" | "Medium" | "Low";
+  status: "open" | "scheduled" | "done" | "cancelled"; due_at: string | null; event_id: number | null; created_by: string; created_at: string;
+  updated_at: string; asset_name?: string; asset_kind?: AssetKind; feeder_id?: string | null; substation_id?: string | null;
+}
+export interface AssetRecommendation { key: string; kind: string; priority: "Critical" | "High" | "Medium" | "Low"; title: string; reason: string }
+export interface AssetExposure {
+  event_id: number; event: string; kind: string; status: string; circuit: string; in_path: boolean; core: number | null; path_km: number | null;
+  path_ef: number | null; pct: number; eta_h: number; basis: string;
+}
+export interface AssetDetail extends Asset {
+  parents: { region_id: string | null; region: string | null; zone_id: string; zone: string | null; substation_id: string | null; substation: string | null;
+    circuit_id: string | null; circuit_customers: number | null };
+  critical_facilities: string[];
+  history: { id: number | null; at: string; kind: string; summary: string; data: Record<string, unknown>; source: string; event_id: number | null;
+    outage_id: number | null; event: string | null }[];
+  exposure: AssetExposure[]; recommendations: AssetRecommendation[]; work_orders: WorkOrder[];
+  outages: { id: number; number: string; event: string | null; status: string; damage: string; cause: string; customers: number; reported_at: string;
+    restored_at: string | null; this_unit: boolean }[];
+  model_status: string;
+}
+export interface HealthModel {
+  status: string; weights: Record<string, number>; defaults: Record<string, number>; labels: Record<string, string>;
+  design_life: Record<string, number>; weibull: Record<string, { eta_y: number; beta: number }>; notes: string[];
+}
+export interface StormImpact {
+  event_id: number; basis: string | null; kind: string | null; scenario: string | null; simulation: boolean; pred_total: number | null;
+  regions_affected: { id: string | null; name: string; pred: number; circuits_hit: number; customers_on_hit: number }[];
+  circuits_hit: { id: string; zone: string; substation: string | null; region: string | null; customers: number; pred: number; pct: number; eta_h: number;
+    path_ef: number | null; core: number | null }[];
+  substations_exposed: { id: string; name: string }[];
+  assets_on_hit_circuits: { kind: AssetKind; label: string; units: number; poor_or_unknown: number }[];
+  confirmed_damage: { kind: AssetKind; label: string; units: number }[];
+  critical_facilities: { name: string; type: string; feeder: string }[];
+  live: { customers_out: number; open_tickets: number; restored_pct: number; customers_affected: number };
+}
+export interface NetworkGeo {
+  state: { name: string; source: string; rings: [number, number][][] } | null;
+  regions: { id: string; name: string; hull: [number, number][] }[]; note: string;
 }
 
 export interface PlanOutlook { pct_poor: number; poor: number; expected_failures: number; risk: number }
@@ -181,7 +239,7 @@ export interface ReplacementPlan {
   projection: { year: number; label: string; no_action: PlanOutlook; with_plan: PlanOutlook }[];
   frontier: { budget: number; risk_reduced_pct: number }[];
   by_region: { id: string; name: string; units: number; power: number; cost: number; risk_reduced: number }[];
-  items: { id: string; kind: string; name: string; where: string | null; region: string | null; age: number; health_index: number;
+  items: { id: string; kind: string; name: string; where: string | null; region: string | null; age: number | null; health_index: number | null;
     condition: Condition; cost: number; risk_reduced: number; drivers: string[] }[];
 }
 export interface NwsAlert {

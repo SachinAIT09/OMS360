@@ -78,6 +78,10 @@ def new_ticket(s: Session, e: StormEvent, zone: Zone, feeders: list[Feeder], mea
         o.reported_at = at
     s.add(o)
     s.flush()
+    from .asset_history import pick_asset
+    unit = pick_asset(s, f.id, o.damage, o.number)  # the transformer / pole the damage report names, when the register has it
+    if unit:
+        o.asset_id, o.device, o.lat, o.lng = unit.id, f"{'Transformer' if o.damage == 'transformer' else 'Pole'} {unit.id}", unit.lat, unit.lng
     ops.log(s, o, "created", f"Opened from {o.source}: {customers:,} customers on {f.id}" + (f" — critical facility: {fac.name}" if o.facility_id else ""))
     return o
 

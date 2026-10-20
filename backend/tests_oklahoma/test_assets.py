@@ -62,11 +62,20 @@ def test_import_asset_register(client, ops_h):
     admin = login(client, "admin")
     sample = client.get("/api/admin/assets/sample", headers=admin).json()
     r = client.post("/api/admin/assets/import", headers=admin, json={"csv": sample["csv"]}).json()
-    assert r["added"] == 2 and r["updated"] == 0
+    assert r["added"] == 5 and r["updated"] == 0 and r["missing_install_year"] == 1  # every equipment type, one without an install year
     r = client.post("/api/admin/assets/import", headers=admin, json={"csv": sample["csv"]}).json()
-    assert r["added"] == 0 and r["updated"] == 2
+    assert r["added"] == 0 and r["updated"] == 5
     unit = client.get("/api/assets/item/PT-NEW-1", headers=ops_h).json()
-    assert unit["kind"] == assets.POWER and unit["install_year"] == 1969 and unit["health_index"] < 60
+    assert unit["kind"] == assets.POWER and unit["install_year"] == 1969 and unit["health_index"] < 60 and unit["source"] == "imported"
+    blank = client.get("/api/assets/item/DT-NEW-0002", headers=ops_h).json()
+    assert blank["install_year"] is None and blank["age"] is None and blank["health_index"] is None and blank["condition"] == "Unknown"
+    assert blank["confidence"] == "low" and any("Install year not recorded" in g for g in blank["gaps"]) and any("No inspection" in g for g in blank["gaps"])
+    pole = client.get("/api/assets/item/PL-NEW-0001", headers=ops_h).json()
+    assert pole["details"]["strength_pct"] == 63 and any("NESC" in d for d in pole["drivers"])
+    assert any(r["key"] == "pole_replace" for r in pole["recommendations"])
+    future = "id,kind,feeder_id,install_year\nDT-X,dist_transformer,{f},2999".format(f=pole["feeder_id"])
+    bad = client.post("/api/admin/assets/import", headers=admin, json={"csv": future})
+    assert bad.status_code == 422 and "install_year" in bad.json()["detail"]
     bad = client.post("/api/admin/assets/import", headers=admin, json={"csv": "id,kind,feeder_id,install_year\nDT-1,dist_transformer,NOPE,1990"})
     assert bad.status_code == 422 and "Row 2" in bad.json()["detail"]
     assert client.post("/api/admin/assets/import", headers=login(client, "priya.nair"), json={"csv": sample["csv"]}).status_code == 403

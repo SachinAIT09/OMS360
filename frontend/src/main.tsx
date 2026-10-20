@@ -1,4 +1,4 @@
-import React from "react";
+import React, { lazy } from "react";
 import ReactDOM from "react-dom/client";
 import { BrowserRouter, Navigate, Route, Routes } from "react-router-dom";
 import { MantineProvider } from "@mantine/core";
@@ -17,18 +17,22 @@ import { AuthProvider } from "./auth/AuthContext";
 import { AppLayout } from "./layout/AppLayout";
 import LoginPage from "./pages/LoginPage";
 import PublicOutageMap from "./pages/PublicOutageMap";
-import OverviewPage from "./pages/OverviewPage";
-import EventsPage from "./pages/EventsPage";
-import EventDetailPage from "./pages/EventDetailPage";
-import OutagesPage from "./pages/OutagesPage";
-import RestorationPage from "./pages/RestorationPage";
-import CrewsPage from "./pages/CrewsPage";
-import CommsPage from "./pages/CommsPage";
-import JarvisPage from "./pages/JarvisPage";
-import ReportsPage from "./pages/ReportsPage";
-import AdminPage from "./pages/AdminPage";
-import AssetHealthPage from "./pages/AssetHealthPage";
 import { loadProfile } from "./lib/profile";
+
+// Pages load on first visit (smaller first download); the shell shows a loader meanwhile.
+const OverviewPage = lazy(() => import("./pages/OverviewPage"));
+const EventsPage = lazy(() => import("./pages/EventsPage"));
+const EventDetailPage = lazy(() => import("./pages/EventDetailPage"));
+const OutagesPage = lazy(() => import("./pages/OutagesPage"));
+const RestorationPage = lazy(() => import("./pages/RestorationPage"));
+const CrewsPage = lazy(() => import("./pages/CrewsPage"));
+const CommsPage = lazy(() => import("./pages/CommsPage"));
+const JarvisPage = lazy(() => import("./pages/JarvisPage"));
+const ReportsPage = lazy(() => import("./pages/ReportsPage"));
+const AdminPage = lazy(() => import("./pages/AdminPage"));
+const AssetHealthPage = lazy(() => import("./pages/AssetHealthPage"));
+const NetworkExplorerPage = lazy(() => import("./pages/NetworkExplorerPage"));
+const AssetDetailPage = lazy(() => import("./pages/AssetDetailPage"));
 
 const queryClient = new QueryClient({ defaultOptions: { queries: { retry: 1, refetchOnWindowFocus: true } } });
 
@@ -54,6 +58,8 @@ loadProfile().then(() => ReactDOM.createRoot(document.getElementById("root")!).r
                   <Route path="jarvis" element={<JarvisPage />} />
                   <Route path="reports" element={<ReportsPage />} />
                   <Route path="asset-health" element={<AssetHealthPage />} />
+                  <Route path="network" element={<NetworkExplorerPage />} />
+                  <Route path="asset/:id" element={<AssetDetailPage />} />
                   <Route path="admin" element={<AdminPage />} />
                   <Route path="*" element={<Navigate to="/" replace />} />
                 </Route>

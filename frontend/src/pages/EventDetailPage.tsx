@@ -1,22 +1,24 @@
 import { useState } from "react";
 import { useNavigate, useParams, useSearchParams } from "react-router-dom";
 import {
-  Alert, Badge, Button, Card, Grid, Group, Modal, NumberInput, SegmentedControl, SimpleGrid, Stack, Switch, Table, Tabs, Text, Textarea, Timeline,
+  Alert, Badge, Button, Card, Grid, Group, Modal, NumberInput, SegmentedControl, SimpleGrid, Slider, Stack, Switch, Table, Tabs, Text, Textarea, Timeline,
 } from "@mantine/core";
 import { BarChart } from "@mantine/charts";
 import { DateTimePicker } from "@mantine/dates";
 import { useDisclosure } from "@mantine/hooks";
 import { IconChartDots, IconInfoCircle, IconListDetails, IconMap, IconPlayerPlay } from "@tabler/icons-react";
 import { api } from "../api/client";
-import { useAction, useGet, useReference } from "../api/hooks";
+import { useAction, useGet, useGeo, useReference } from "../api/hooks";
 import type { PredictionRun, StormEvent, EventStats, Audit } from "../api/types";
 import { useAuth } from "../auth/AuthContext";
 import { EventStatusBadge } from "../components/badges";
 import { ErrorState, Loading, PageHeader, SectionTitle, Stat } from "../components/common";
 import { EventLifecycle } from "../components/EventLifecycle";
 import { ForecastCard, PredictedEtrTables } from "../components/PredictionNetwork";
+import { StormImpactCard } from "../components/StormImpactCard";
 import { EF_COLOR, MapLegend, TerritoryMap } from "../components/TerritoryMap";
-import { ago, dt, fmt, impactWord, isRain, isTornado, pct, scale, scenario, sevColor } from "../lib/format";
+import { ago, dayjs, dt, fmt, impactWord, isRain, isTornado, pct, scale, scenario, sevColor } from "../lib/format";
+import { trackSpan } from "../lib/geo";
 import { PROFILE } from "../lib/profile";
 
 type Detail = StormEvent & { prediction: PredictionRun | null; stats: EventStats };
@@ -57,7 +59,10 @@ function StormTab({ e }: { e: Detail }) {
   const [notes, setNotes] = useState(e.notes);
   const rain = isRain(e);
   const tornado = isTornado(e);
+  const geo = useGeo();
   const paths = new Set((e.track ?? []).map(p => p.path ?? 0)).size;
+  const span = tornado ? trackSpan(e.track) : null;
+  const [asOf, setAsOf] = useState<number | null>(null);
   const [rainIn, setRainIn] = useState<number | string>(e.rain_total_in ?? 4);
   const [rate, setRate] = useState<number | string>(e.rain_rate_in_hr ?? 1);
   const [sat, setSat] = useState<number | string>(Math.round((e.soil_saturation ?? 0.5) * 100));
@@ -79,7 +84,15 @@ function StormTab({ e }: { e: Detail }) {
     <Grid gutter="lg">
       <Grid.Col span={{ base: 12, lg: 8 }}>
         <Card padding="sm">
-          <TerritoryMap track={e.track} zones={[]} facilities={ref.data?.facilities} center={rain || tornado ? PROFILE.map_center : [e.track?.[0]?.lat ?? e.lat, e.track?.[0]?.lng ?? e.lng]} zoom={rain || tornado ? PROFILE.map_zoom : 6} height={520} />
+          <TerritoryMap track={e.track} zones={[]} facilities={ref.data?.facilities} center={rain || tornado ? PROFILE.map_center : [e.track?.[0]?.lat ?? e.lat, e.track?.[0]?.lng ?? e.lng]}
+            zoom={rain || tornado ? PROFILE.map_zoom : 6} height={520} outline={geo.data?.state?.rings} asOf={asOf ?? undefined} />
+          {span && (
+            <Group mt="sm" gap="sm" wrap="nowrap" align="center">
+              <Text size="xs" c="dimmed" w={120}>Timeline: {asOf ? dayjs(asOf).format("h:mm A") : "now"}</Text>
+              <Slider style={{ flex: 1 }} min={span[0] - 30 * 60_000} max={span[1] + 30 * 60_000} step={5 * 60_000} value={asOf ?? Math.min(Math.max(Date.now(), span[0] - 30 * 60_000), span[1] + 30 * 60_000)}
+                onChange={setAsOf} label={v => dt(new Date(v).toISOString())} aria-label="Tornado timeline" />
+              <Button size="compact-xs" variant="subtle" onClick={() => setAsOf(null)}>Now</Button>
+            </Group>)}
           <Text size="xs" c="dimmed" mt={6}>{rain ? "Rain events cover the whole service territory; critical facilities shown."
             : tornado ? <>Damage paths drawn to scale and coloured by EF rating{[0, 1, 2, 3, 4, 5].map(k => <span key={k} style={{ color: EF_COLOR[k], fontWeight: 700 }}> EF{k}</span>)} · solid = passed, dashed = forecast.</>
             : "White = observed track · amber dashed = forecast track · rings widen with forecast uncertainty."}</Text>
@@ -214,6 +227,7 @@ function PredictionTab({ e }: { e: Detail }) {
             <Text size="xs" c="dimmed" p="sm">Before touchdown these are planning paths from the SPC outlook and the parent model; replace them with surveyed paths after the storms
               to tighten every circuit's ETR.</Text>
           </Card>) : null}
+        <StormImpactCard eventId={e.id} />
         <PredictedEtrTables p={p} impactAt={e.landfall_at} impactWord={impactWord(e)} track={e.track} />
         <Card>
           <SectionTitle right={<Badge color="red" variant="light">Top 8 feeders = {pct(p.feeders.slice(0, 8).reduce((s, f) => s + f.pred, 0) / p.pred_total)} of predicted impact</Badge>}>

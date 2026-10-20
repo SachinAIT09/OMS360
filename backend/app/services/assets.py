@@ -15,7 +15,7 @@ import os
 import random
 import zlib
 
-from sqlalchemy import Integer, case, cast, delete, func, insert, select
+from sqlalchemy import Integer, case, cast, delete, func, select
 from sqlalchemy.orm import Session
 
 from ..models import Asset, AssetEvent, Facility, Feeder, Region, Substation, WorkOrder, Zone, utcnow
@@ -71,12 +71,23 @@ def _along(route: list | None, frac: float, lat: float, lng: float) -> tuple[flo
     return round(p[0], 5), round(p[1], 5)
 
 
-def _gappy(rng: random.Random, a: Asset, no_year: float, no_insp: float) -> None:
+def _gappy(rng: random.Random, a, no_year: float, no_insp: float) -> None:
     """A few sandbox records arrive with missing data, as real registers do."""
     if rng.random() < no_year:
         a.install_year = None
     if rng.random() < no_insp:
         a.inspection_score, a.last_inspection = None, None
+
+
+class _Unit:
+    """A plain record with the Asset columns, for fast bulk seeding."""
+    _defaults = {"manufacturer": "", "rating_kva": 0.0, "phases": 1, "last_inspection": None, "inspection_score": None, "peak_load_pct": None,
+                 "dga_tdcg_ppm": None, "oil_moisture_ppm": None, "through_faults": None, "ltc": False, "maintenance_overdue": False,
+                 "details": None, "feeder_id": None, "substation_id": None}
+
+    def __init__(self, **kw):
+        self.__dict__.update(self._defaults)
+        self.__dict__.update(kw)
 
 
 def ensure_assets(s: Session) -> int:
@@ -98,7 +109,7 @@ def ensure_assets(s: Session) -> int:
     rows: list[dict] = []
     cols = [c.key for c in Asset.__table__.columns]
 
-    def add(a: Asset, customers: float, critical: bool) -> None:
+    def add(a, customers: float, critical: bool) -> None:
         a.details = a.details or {}
         a.source, a.status = "sandbox", "in_service"
         score(a, customers, critical, year)
@@ -111,7 +122,7 @@ def ensure_assets(s: Session) -> int:
             for k in range(n):
                 age = int(rng.triangular(2, 64, 40))
                 dga = max(60.0, rng.lognormvariate(math.log(120 + age * 14), 0.6))
-                a = Asset(id=f"PT-{sub.id[4:]}-{k + 1}", kind=POWER, name=f"{sub.name} T{k + 1}", substation_id=sub.id, feeder_id=None,
+                a = _Unit(id=f"PT-{sub.id[4:]}-{k + 1}", kind=POWER, name=f"{sub.name} T{k + 1}", substation_id=sub.id, feeder_id=None,
                           zone_id=sub.zone_id, lat=round(sub.lat + 0.0004 * k, 5), lng=round(sub.lng + 0.0004 * k, 5), install_year=year - age,
                           manufacturer=rng.choice(MAKERS_POWER), rating_kva=float(rng.choice([20000, 28000, 33600, 50000])), mounting="sub", phases=3,
                           last_inspection=year - rng.randint(0, 2), inspection_score=max(1, min(5, round(1 + age / 30 + rng.gauss(0, 0.7)))),
@@ -137,7 +148,7 @@ def ensure_assets(s: Session) -> int:
                 three = rng.random() < 0.025
                 kva = rng.choice([300.0, 500.0]) if three else rng.choice([25.0, 25.0, 37.5, 50.0]) if pole else rng.choice([50.0, 75.0, 75.0, 167.0])
                 lat, lng = _point_on(f.route, rng, z.lat, z.lng)
-                a = Asset(id=f"DT-{f.id[4:]}-{i + 1:04d}", kind=DIST, name=f"{'Pole' if pole else 'Pad'}-mount {kva:g} kVA", substation_id=f.substation_id,
+                a = _Unit(id=f"DT-{f.id[4:]}-{i + 1:04d}", kind=DIST, name=f"{'Pole' if pole else 'Pad'}-mount {kva:g} kVA", substation_id=f.substation_id,
                           feeder_id=f.id, zone_id=f.zone_id, lat=lat, lng=lng, install_year=year - age, manufacturer=rng.choice(MAKERS_DIST),
                           rating_kva=kva, mounting="pole" if pole else "pad", phases=3 if three else 1,
                           last_inspection=year - rng.randint(0, 6), inspection_score=max(1, min(5, round(1 + age / 22 + rng.gauss(0, 0.8)))),
@@ -150,7 +161,7 @@ def ensure_assets(s: Session) -> int:
             intr = "oil" if age > 38 and frng.random() < 0.7 else frng.choice(["vacuum", "vacuum", "SF6"])
             rated = {"oil": 2000, "vacuum": 10000, "SF6": 5000}[intr]
             ty = year - frng.randint(0, 8)
-            a = Asset(id=f"BK-{f.id[4:]}", kind=BREAKER, name=f"Feeder breaker {f.id}", substation_id=f.substation_id, feeder_id=f.id,
+            a = _Unit(id=f"BK-{f.id[4:]}", kind=BREAKER, name=f"Feeder breaker {f.id}", substation_id=f.substation_id, feeder_id=f.id,
                       zone_id=f.zone_id, lat=round(sub.lat - 0.0003, 5), lng=round(sub.lng + 0.0003 * (int(f.id[-2:]) % 9), 5), install_year=year - age,
                       manufacturer=frng.choice(MAKERS_SWITCH), mounting="sub", phases=3, last_inspection=year - frng.randint(0, 3),
                       inspection_score=max(1, min(5, round(1 + age / 28 + frng.gauss(0, 0.7)))),
@@ -164,7 +175,7 @@ def ensure_assets(s: Session) -> int:
             for k in range(1 + (f.customers > 4000)):
                 age = int(max(0, min(40, frng.gauss(vintage * 0.7, 7))))
                 lat, lng = _along(f.route, 0.45 + 0.3 * k, z.lat, z.lng)
-                a = Asset(id=f"RC-{f.id[4:]}-{k + 1}", kind=RECLOSER, name=f"Recloser {k + 1} on {f.id}", substation_id=f.substation_id,
+                a = _Unit(id=f"RC-{f.id[4:]}-{k + 1}", kind=RECLOSER, name=f"Recloser {k + 1} on {f.id}", substation_id=f.substation_id,
                           feeder_id=f.id, zone_id=f.zone_id, lat=lat, lng=lng, install_year=year - age, manufacturer=frng.choice(MAKERS_SWITCH),
                           mounting="line", phases=3, last_inspection=year - frng.randint(0, 5),
                           inspection_score=max(1, min(5, round(1 + age / 20 + frng.gauss(0, 0.8)))),
@@ -181,7 +192,7 @@ def ensure_assets(s: Session) -> int:
                 tested = prng.random() < 0.7
                 strength = round(max(40.0, min(100.0, 100 - age * (0.55 if material == "wood" else 0.15) + prng.gauss(0, 6))), 0) if tested else None
                 lat, lng = _point_on(f.route, prng, z.lat, z.lng)
-                a = Asset(id=f"PL-{f.id[4:]}-{i + 1:04d}", kind=POLE, name=f"{material.title()} pole, class {prng.choice([2, 3, 4, 5])}",
+                a = _Unit(id=f"PL-{f.id[4:]}-{i + 1:04d}", kind=POLE, name=f"{material.title()} pole, class {prng.choice([2, 3, 4, 5])}",
                           substation_id=f.substation_id, feeder_id=f.id, zone_id=f.zone_id, lat=lat, lng=lng, install_year=year - age,
                           manufacturer="", mounting="line", phases=1, last_inspection=year - prng.randint(0, 10) if tested else None,
                           inspection_score=max(1, min(5, round(1 + age / 25 + prng.gauss(0, 0.8)))) if tested else None,
@@ -192,19 +203,25 @@ def ensure_assets(s: Session) -> int:
                 _gappy(prng, a, 0.02, 0.0)
                 add(a, f.customers / n * 6, critical)
     for i in range(0, len(rows), 5000):
-        s.execute(insert(Asset), rows[i:i + 5000])
+        s.execute(Asset.__table__.insert(), rows[i:i + 5000])  # core executemany: far faster than the ORM bulk path
     s.commit()
     from .asset_history import seed_history
     seed_history(s)
     return len(rows)
 
 
-def consequences(s: Session) -> dict[str, tuple[float, bool]]:
-    """Customers who lose power when each unit fails, and whether a critical facility is behind it."""
+def consequences(s: Session, ids: list[str] | None = None) -> dict[str, tuple[float, bool]]:
+    """Customers who lose power when each unit fails (all units, or just `ids`), and whether a critical facility is behind it."""
     feeders = {f.id: f for f in s.scalars(select(Feeder)).all()}
     crit = {f.feeder_id for f in s.scalars(select(Facility)).all()}
-    counts = {(k, fid): n for k, fid, n in s.execute(select(Asset.kind, Asset.feeder_id, func.count(Asset.id))
-                                                     .where(Asset.feeder_id.is_not(None)).group_by(Asset.kind, Asset.feeder_id)).all()}
+    units = select(Asset.id, Asset.kind, Asset.feeder_id, Asset.substation_id)
+    if ids is not None:
+        units = units.where(Asset.id.in_(ids))
+    units = s.execute(units).all()
+    cq = select(Asset.kind, Asset.feeder_id, func.count(Asset.id)).where(Asset.feeder_id.is_not(None))
+    if ids is not None:
+        cq = cq.where(Asset.feeder_id.in_({u[2] for u in units if u[2]}))
+    counts = {(k, fid): n for k, fid, n in s.execute(cq.group_by(Asset.kind, Asset.feeder_id)).all()}
     sub_cust: dict[str, int] = {}
     for f in feeders.values():
         if f.substation_id:
@@ -212,7 +229,7 @@ def consequences(s: Session) -> dict[str, tuple[float, bool]]:
     sub_n = dict(s.execute(select(Asset.substation_id, func.count(Asset.id)).where(Asset.kind == POWER).group_by(Asset.substation_id)).all())
     sub_crit = {f.substation_id for f in feeders.values() if f.id in crit}
     out = {}
-    for aid, kind, fid, sid in s.execute(select(Asset.id, Asset.kind, Asset.feeder_id, Asset.substation_id)).all():
+    for aid, kind, fid, sid in units:
         if kind == POWER:
             out[aid] = (sub_cust.get(sid, 0) / max(1, sub_n.get(sid, 1)), sid in sub_crit)
             continue
@@ -226,7 +243,7 @@ def consequences(s: Session) -> dict[str, tuple[float, bool]]:
 def rescore(s: Session, ids: list[str] | None = None) -> int:
     """Recompute health and risk (after an import, a weight change, a replacement or a new year)."""
     year = utcnow().year
-    cons = consequences(s)
+    cons = consequences(s, ids)
     q = select(Asset) if ids is None else select(Asset).where(Asset.id.in_(ids))
     n = 0
     for a in s.scalars(q).all():

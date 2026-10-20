@@ -41,7 +41,7 @@ SORTS = {"reported_at": Outage.reported_at, "customers": Outage.customers, "prio
 
 
 @router.get("/outages")
-def list_outages(event_id: int | None = None, status: str | None = None, zone: str | None = None, priority: str | None = None,
+def list_outages(event_id: int | None = None, status: str | None = None, zone: str | None = None, priority: str | None = None, feeder: str | None = None,
                  q: str | None = None, open_only: bool = False, sort: str = "reported_at", desc: bool = True,
                  page: int = Query(1, ge=1), size: int = Query(25, ge=1, le=500),
                  s: Session = Depends(get_session), _: User = Depends(current_user)):
@@ -54,6 +54,8 @@ def list_outages(event_id: int | None = None, status: str | None = None, zone: s
         query = query.where(Outage.status.in_(ops.OPEN))
     if zone:
         query = query.where(Outage.zone_id == zone)
+    if feeder:
+        query = query.where(Outage.feeder_id == feeder.upper())
     if priority:
         query = query.where(Outage.priority.in_(priority.split(",")))
     if q:
@@ -146,6 +148,12 @@ def update_outage(outage_id: int, body: OutagePatch, s: Session = Depends(get_se
         if o.status == "reported" and ({"cause", "damage"} & changes.keys()):
             o.status = "assessed"
         ops.log(s, o, "update", "Updated " + ", ".join(f"{k} → {v}" for k, v in changes.items()), user.name)
+    from ..services.asset_history import pick_asset, sync_ticket
+    if not o.asset_id and o.damage in ("transformer", "pole"):
+        unit = pick_asset(s, o.feeder_id, o.damage, o.number)
+        if unit:
+            o.asset_id, o.device = unit.id, f"{'Transformer' if o.damage == 'transformer' else 'Pole'} {unit.id}"
+    sync_ticket(s, o)  # a crew's damage assessment confirms damage on the named unit
     s.commit()
     bus.publish("outages")
     return outage_detail(o.id, s, user)

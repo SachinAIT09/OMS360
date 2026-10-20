@@ -1,16 +1,22 @@
-import { useState, type ReactNode } from "react";
+import { useEffect, useState, type ReactNode } from "react";
 import L from "leaflet";
-import { Circle, CircleMarker, MapContainer, Marker, Polygon, Polyline, Popup, TileLayer, Tooltip } from "react-leaflet";
+import { Circle, CircleMarker, MapContainer, Marker, Polygon, Polyline, Popup, TileLayer, Tooltip, useMap } from "react-leaflet";
 import { useComputedColorScheme } from "@mantine/core";
 import { API_BASE } from "../api/client";
 import type { Facility, TrackPoint, Yard } from "../api/types";
 import { dt, FAC_COLOR, fmt, pct, sevColor } from "../lib/format";
+import { corridor } from "../lib/geo";
 import { PROFILE } from "../lib/profile";
 
 export interface MapZone { id: string; short: string; lat: number; lng: number; customers: number; value: number; popup?: ReactNode; restored?: boolean }
 export interface MapPin { id: number | string; lat: number; lng: number; color: string; popup?: ReactNode; onClick?: () => void }
 /** A circuit route: one or more polylines of [lat, lng]. */
-export interface MapLine { id: string; lines: [number, number][][]; color: string; weight?: number; opacity?: number; popup?: ReactNode }
+export interface MapLine {
+  id: string; lines: [number, number][][]; color: string; weight?: number; opacity?: number; popup?: ReactNode; tooltip?: string; onClick?: () => void;
+  dashed?: boolean;
+}
+/** A shaded area (e.g. a region's approximate service area). */
+export interface MapArea { id: string; name: string; ring: [number, number][]; color: string; selected?: boolean; dimmed?: boolean; onClick?: () => void; label?: ReactNode }
 
 const facIcon = (k: string) => L.divIcon({ className: "", html: `<div class="mk" style="background:${FAC_COLOR[k]}">${k}</div>`, iconSize: [18, 18], iconAnchor: [9, 9] });
 const yardIcon = L.divIcon({ className: "", html: `<div class="mk round" style="background:#2b6bff">Y</div>`, iconSize: [18, 18], iconAnchor: [9, 9] });
@@ -32,16 +38,28 @@ function Basemap({ light }: { light: boolean }) {
   </>;
 }
 
-export function TerritoryMap({ zones = [], pins = [], lines = [], facilities, yards, track, center = PROFILE.map_center, zoom = PROFILE.map_zoom, height = 420, labels = true, light, radarLayer }: {
+export function TerritoryMap({ zones = [], pins = [], lines = [], facilities, yards, track, center = PROFILE.map_center, zoom = PROFILE.map_zoom, height = 420, labels = true,
+  light, radarLayer, outline, areas, children, asOf, fit, scrollZoom = false }: {
   zones?: MapZone[]; pins?: MapPin[]; lines?: MapLine[]; facilities?: Facility[]; yards?: Yard[]; track?: TrackPoint[] | null; center?: [number, number]; zoom?: number;
   height?: number | string; labels?: boolean; light?: boolean; radarLayer?: string | null;
+  /** state boundary rings */ outline?: [number, number][][] | null; areas?: MapArea[]; children?: ReactNode;
+  /** the moment to draw a tornado's progress at (ms); defaults to now */ asOf?: number;
+  /** points to zoom to whenever they change (drill-down) */ fit?: [number, number][] | null; scrollZoom?: boolean;
 }) {
   const scheme = useComputedColorScheme("dark");
   const isLight = light ?? scheme === "light";
   return (
-    <MapContainer center={center} zoom={zoom} scrollWheelZoom={false} style={{ height, width: "100%" }}>
+    <MapContainer center={center} zoom={zoom} scrollWheelZoom={scrollZoom} preferCanvas style={{ height, width: "100%" }}>
       <Basemap light={isLight} />
+      {fit && fit.length > 0 && <FitTo points={fit} />}
       {radarLayer && <TileLayer url={`${API_BASE}/weather/tiles/${radarLayer}/{z}/{x}/{y}.png`} opacity={0.7} attribution="Weather © OpenWeather" />}
+      {outline?.map((ring, i) => <Polygon key={`o${i}`} positions={ring} interactive={false}
+        pathOptions={{ color: isLight ? "#33405f" : "#c8d3e6", weight: 2, fill: false, opacity: 0.7, dashArray: "4 4" }} />)}
+      {areas?.map(a => (
+        <Polygon key={a.id} positions={a.ring} eventHandlers={a.onClick ? { click: a.onClick } : undefined}
+          pathOptions={{ color: a.color, weight: a.selected ? 3 : 1.5, fillColor: a.color, fillOpacity: a.dimmed ? 0.04 : a.selected ? 0.22 : 0.12, opacity: a.dimmed ? 0.35 : 0.9 }}>
+          <Tooltip sticky>{a.label ?? a.name}</Tooltip>
+        </Polygon>))}
       {zones.map(z => {
         const col = z.restored ? "#3ec46d" : sevColor(z.value);
         return (
@@ -52,10 +70,12 @@ export function TerritoryMap({ zones = [], pins = [], lines = [], facilities, ya
         );
       })}
       {lines.map(l => (
-        <Polyline key={l.id} positions={l.lines} pathOptions={{ color: l.color, weight: l.weight ?? 3, opacity: l.opacity ?? 0.9 }}>
+        <Polyline key={l.id} positions={l.lines} eventHandlers={l.onClick ? { click: l.onClick } : undefined}
+          pathOptions={{ color: l.color, weight: l.weight ?? 3, opacity: l.opacity ?? 0.9, dashArray: l.dashed ? "5 5" : undefined }}>
+          {l.tooltip && <Tooltip sticky>{l.tooltip}</Tooltip>}
           {l.popup && <Popup>{l.popup}</Popup>}
         </Polyline>))}
-      {track && track.length > 1 && (track.some(p => p.path != null) ? <TornadoPaths track={track} /> : <StormTrack track={track} />)}
+      {track && track.length > 1 && (track.some(p => p.path != null) ? <TornadoPaths track={track} asOf={asOf} /> : <StormTrack track={track} />)}
       {facilities?.map(f => (
         <Marker key={f.id} position={[f.lat, f.lng]} icon={facIcon(f.kind)}>
           <Popup><b>{f.name}</b><br />{f.type} · feeder {f.feeder_id}<br />Backup: {f.backup}</Popup>
@@ -68,8 +88,21 @@ export function TerritoryMap({ zones = [], pins = [], lines = [], facilities, ya
         <Marker key={p.id} position={[p.lat, p.lng]} icon={pinIcon(p.color)} eventHandlers={p.onClick ? { click: p.onClick } : undefined}>
           {p.popup && !p.onClick && <Popup>{p.popup}</Popup>}
         </Marker>))}
+      {children}
     </MapContainer>
   );
+}
+
+/** Zoom to a set of points whenever it changes (padding keeps edge features visible). */
+function FitTo({ points }: { points: [number, number][] }) {
+  const map = useMap();
+  const key = points.length + ":" + points.slice(0, 3).flat().join(",") + points.slice(-1).flat().join(",");
+  useEffect(() => {
+    if (points.length === 1) map.setView(points[0], Math.max(map.getZoom(), 13));
+    else map.fitBounds(L.latLngBounds(points), { padding: [24, 24], maxZoom: 14 });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [key]);
+  return null;
 }
 
 function StormTrack({ track }: { track: TrackPoint[] }) {
@@ -92,8 +125,8 @@ function StormTrack({ track }: { track: TrackPoint[] }) {
 
 /** Tornado damage paths drawn to scale: a corridor as wide as the damage width, coloured by EF rating, solid where the
     tornado has already passed and dashed ahead of it, with the twister at its current (or touchdown) position. */
-function TornadoPaths({ track }: { track: TrackPoint[] }) {
-  const now = Date.now();
+function TornadoPaths({ track, asOf }: { track: TrackPoint[]; asOf?: number }) {
+  const now = asOf ?? Date.now();
   const paths = new Map<number, TrackPoint[]>();
   track.forEach(p => paths.set(p.path ?? 0, [...(paths.get(p.path ?? 0) ?? []), p]));
   return <>
@@ -117,16 +150,6 @@ function TornadoPaths({ track }: { track: TrackPoint[] }) {
       );
     })}
   </>;
-}
-
-/** The four corners of a corridor `half` metres either side of segment a→b. */
-function corridor(a: [number, number], b: [number, number], half: number): [number, number][] {
-  const kx = 111320 * Math.cos((a[0] * Math.PI) / 180), ky = 110570;
-  const dx = (b[1] - a[1]) * kx, dy = (b[0] - a[0]) * ky;
-  const len = Math.hypot(dx, dy) || 1;
-  const ox = (-dy / len) * half, oy = (dx / len) * half;
-  const off = (p: [number, number], s: number): [number, number] => [p[0] + (s * oy) / ky, p[1] + (s * ox) / kx];
-  return [off(a, 1), off(b, 1), off(b, -1), off(a, -1)];
 }
 
 export function MapLegend({ mode = "out" }: { mode?: "out" | "pred" }) {
