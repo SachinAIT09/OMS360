@@ -27,10 +27,12 @@ import CommsPage from "./pages/CommsPage";
 import JarvisPage from "./pages/JarvisPage";
 import ReportsPage from "./pages/ReportsPage";
 import AdminPage from "./pages/AdminPage";
+import AssetHealthPage from "./pages/AssetHealthPage";
+import { loadProfile } from "./lib/profile";
 
 const queryClient = new QueryClient({ defaultOptions: { queries: { retry: 1, refetchOnWindowFocus: true } } });
 
-ReactDOM.createRoot(document.getElementById("root")!).render(
+loadProfile().then(() => ReactDOM.createRoot(document.getElementById("root")!).render(
   <React.StrictMode>
     <MantineProvider theme={theme} defaultColorScheme="dark" forceColorScheme={location.pathname.startsWith("/outage-map") ? "light" : undefined}>
       <Notifications position="bottom-right" limit={4} />
@@ -51,6 +53,7 @@ ReactDOM.createRoot(document.getElementById("root")!).render(
                   <Route path="communications" element={<CommsPage />} />
                   <Route path="jarvis" element={<JarvisPage />} />
                   <Route path="reports" element={<ReportsPage />} />
+                  <Route path="asset-health" element={<AssetHealthPage />} />
                   <Route path="admin" element={<AdminPage />} />
                   <Route path="*" element={<Navigate to="/" replace />} />
                 </Route>
@@ -61,4 +64,4 @@ ReactDOM.createRoot(document.getElementById("root")!).render(
       </QueryClientProvider>
     </MantineProvider>
   </React.StrictMode>,
-);
+));

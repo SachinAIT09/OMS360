@@ -5,6 +5,8 @@ import pytest
 
 os.environ["OMS360_DB"] = os.path.join(tempfile.mkdtemp(), "test.sqlite")
 os.environ["OMS360_DISABLE_CONNECTOR"] = "1"
+os.environ["OMS360_TERRITORY"] = "tampa"  # this suite pins the Tampa / hurricane demo; tests_oklahoma covers Oklahoma / tornado
+os.environ.setdefault("OMS360_ASSET_DENSITY", "150")  # a sparse transformer register keeps per-test seeding fast
 
 from fastapi.testclient import TestClient  # noqa: E402
 

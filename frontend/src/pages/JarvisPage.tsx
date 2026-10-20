@@ -12,6 +12,7 @@ import type { JarvisConversation, JarvisMessage, JarvisSaved } from "../api/type
 import { useCurrentEvent } from "../auth/EventContext";
 import { AnswerBody, speak, useAssistantAction, useVoiceInput } from "../components/JarvisChat";
 import { ago } from "../lib/format";
+import { PROFILE } from "../lib/profile";
 
 const STARTERS = [
   { label: "Situation briefing", prompt: "Give me a situation briefing", icon: IconFileText, color: "brand" },
@@ -19,8 +20,12 @@ const STARTERS = [
   { label: "Hardest-hit areas", prompt: "Which areas will be hit hardest?", icon: IconBolt, color: "orange" },
   { label: "Waiting for approval", prompt: "What's waiting for approval?", icon: IconChecklist, color: "ai" },
 ];
-const MORE_PROMPTS = ["When will Riverview be restored?", "What if it becomes a Cat 4?", "What if it brings 10 inches of rain?", "What are the ETRs in the South Shore region?", "How many tickets are unassigned?", "Are the hospitals at risk?",
-  "What about the water system?", "Draft a post for Brandon customers", "How much will this storm cost?", "Where is the storm now?"];
+const MORE_PROMPTS = PROFILE.hazard === "tornado"
+  ? ["When will Moore be restored?", "Which circuits are in the tornado path?", "What if it's an EF5?", "What are the ETRs in the Central region?",
+     "Oldest transformers in the Northeast region", "Transformer health on FDR-MOO-03", "Are the hospitals at risk?", "How many tickets are unassigned?",
+     "Draft a post for Norman customers", "How much will this storm cost?", "Where is the tornado now?"]
+  : ["When will Riverview be restored?", "What if it becomes a Cat 4?", "What if it brings 10 inches of rain?", "What are the ETRs in the South Shore region?", "How many tickets are unassigned?", "Are the hospitals at risk?",
+     "What about the water system?", "Draft a post for Brandon customers", "How much will this storm cost?", "Where is the storm now?", "Asset health in the East region"];
 
 /** `null` = the user's most recent conversation, 0 = a fresh one, otherwise a specific conversation. */
 type ConvSel = number | null;

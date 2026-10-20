@@ -10,8 +10,10 @@ from .. import bus, serial
 from ..auth import current_user, require
 from ..db import get_session
 from ..models import AuditLog, ForecastRun, Message, Outage, PredictionRun, Recommendation, StormEvent, Task, User, Zone, utcnow
-from ..services import forecast as fc_svc, nhc, ops, recommendations as recs
-from ..services.events import EVENT_KINDS, RAIN, LifecycleError, change_status
+from ..services import forecast as fc_svc, nhc, nws, ops, recommendations as recs
+from ..data import NEW_EVENT, WEATHER_POINT
+from ..territories.common import EF_WIDTH_M, EF_WIND, path_track
+from ..services.events import EVENT_KINDS, RAIN, TORNADO, LifecycleError, change_status
 from ..services.prediction import predict
 
 router = APIRouter(tags=["events"])
@@ -44,12 +46,12 @@ def current_event(s: Session = Depends(get_session), _: User = Depends(current_u
 
 class EventIn(BaseModel):
     name: str = Field(min_length=2, max_length=80)
-    kind: str = "Hurricane"  # one of EVENT_KINDS
-    category: int = Field(1, ge=1, le=5)
+    kind: str = NEW_EVENT["kind"]  # one of EVENT_KINDS
+    category: int = Field(1, ge=0, le=5)  # Saffir-Simpson category; EF rating (0–5) for tornadoes
     max_wind_mph: int = Field(90, ge=20, le=220)
     pressure_mb: int = Field(980, ge=850, le=1030)
-    lat: float = 25.0
-    lng: float = -85.0
+    lat: float = NEW_EVENT["lat"]
+    lng: float = NEW_EVENT["lng"]
     heading_deg: float = 30
     speed_mph: float = 12
     landfall_at: datetime | None = None  # rain events: rain onset
@@ -58,6 +60,9 @@ class EventIn(BaseModel):
     rain_rate_in_hr: float | None = Field(None, ge=0.1, le=8)
     duration_h: float | None = Field(None, ge=1, le=240)
     soil_saturation: float | None = Field(None, ge=0, le=1)
+    # Tornadoes: a damage path from (lat, lng) along heading_deg, at speed_mph forward speed
+    path_length_mi: float | None = Field(None, ge=0.5, le=200)
+    path_width_m: int | None = Field(None, ge=30, le=4000)
 
 
 @router.post("/events", status_code=201)
@@ -68,11 +73,17 @@ def create_event(body: EventIn, s: Session = Depends(get_session), user: User = 
     if body.kind == RAIN:
         # No track or category: a rain event is described by rainfall over the territory.
         e = StormEvent(name=body.name, kind=body.kind, category=1, max_wind_mph=min(body.max_wind_mph, 39), pressure_mb=body.pressure_mb,
-                       lat=27.95, lng=-82.46, movement="", landfall_at=body.landfall_at, notes=body.notes, created_by=user.id, track=[],
+                       lat=WEATHER_POINT["lat"], lng=WEATHER_POINT["lon"], movement="", landfall_at=body.landfall_at, notes=body.notes, created_by=user.id, track=[],
                        rain_total_in=body.rain_total_in or 4.0, rain_rate_in_hr=body.rain_rate_in_hr or 1.0,
                        duration_h=body.duration_h or 12, soil_saturation=0.5 if body.soil_saturation is None else body.soil_saturation)
-    else:
+    elif body.kind == TORNADO:
         e = StormEvent(name=body.name, kind=body.kind, category=body.category, max_wind_mph=body.max_wind_mph, pressure_mb=body.pressure_mb,
+                       lat=body.lat, lng=body.lng, movement=f"{nhc._compass(body.heading_deg)} at {round(body.speed_mph)} mph",
+                       landfall_at=body.landfall_at, notes=body.notes, created_by=user.id,
+                       track=tornado_track(body.lat, body.lng, body.heading_deg, body.path_length_mi or 15, body.category,
+                                           body.path_width_m, body.speed_mph, body.landfall_at or now, now))
+    else:
+        e = StormEvent(name=body.name, kind=body.kind, category=max(1, body.category), max_wind_mph=body.max_wind_mph, pressure_mb=body.pressure_mb,
                        lat=body.lat, lng=body.lng, movement=f"{nhc._compass(body.heading_deg)} at {round(body.speed_mph)} mph",
                        landfall_at=body.landfall_at, notes=body.notes, created_by=user.id,
                        track=nhc.project_track(body.lat, body.lng, body.heading_deg, body.speed_mph, now))
@@ -82,6 +93,20 @@ def create_event(body: EventIn, s: Session = Depends(get_session), user: User = 
     s.commit()
     bus.publish("events")
     return serial.event(e)
+
+
+def tornado_track(lat: float, lng: float, heading_deg: float, length_mi: float, ef: int, width_m: int | None, speed_mph: float,
+                  touchdown: datetime, now: datetime) -> list[dict]:
+    """A straight damage path from the touchdown point, split into ~2-mile steps so circuits are matched along its length."""
+    import math
+    n = max(1, round(length_mi / 2))
+    pts = []
+    for i in range(n + 1):
+        d = length_mi * i / n
+        pts.append([round(lat + d * math.cos(math.radians(heading_deg)) / 69, 4),
+                    round(lng + d * math.sin(math.radians(heading_deg)) / (69 * math.cos(math.radians(lat))), 4)])
+    paths = [{"ef": ef, "width_m": width_m or EF_WIDTH_M[ef], "start_h": 0, "mph": max(5.0, speed_mph), "points": pts}]
+    return path_track(paths, touchdown, now)
 
 
 class EventPatch(BaseModel):
@@ -250,6 +275,121 @@ async def import_nhc(body: ImportIn, s: Session = Depends(get_session), user: Us
     s.commit()
     bus.publish("events")
     return serial.event(e)
+
+
+# ---------------------------------------------------------------- NWS (tornado warnings) and surveyed damage paths
+@router.get("/nws/alerts")
+async def nws_alerts(_: User = Depends(current_user)):
+    try:
+        return {"alerts": nws.parse(await nws.fetch()), "error": None, "source": f"{nws.FEED}?area={nws.STATE_CODE}"}
+    except Exception as e:
+        return {"alerts": [], "error": f"NWS alerts feed unavailable: {e}", "source": nws.FEED}
+
+
+class NwsImportIn(BaseModel):
+    alert_id: str | None = None
+    sample: bool = False  # sandbox: import the built-in sample warning
+
+
+@router.post("/events/import-nws", status_code=201)
+async def import_nws(body: NwsImportIn, s: Session = Depends(get_session), user: User = Depends(require("events.manage"))):
+    if body.sample:
+        a = nws.parse(nws.sample_feed())[0]
+        return _create_from_warning(s, a, user)
+    alerts = {a["id"]: a for a in nws.parse(await nws.fetch())}
+    a = alerts.get(body.alert_id or "")
+    if not a or not a["importable"]:
+        raise HTTPException(404, "That tornado warning is no longer active in the NWS feed.")
+    return _create_from_warning(s, a, user)
+
+
+def _create_from_warning(s: Session, a: dict, user: User) -> dict:
+    key = a["id"][-20:]
+    if s.scalars(select(StormEvent).where(StormEvent.nhc_id == key, StormEvent.status != "closed")).first():
+        raise HTTPException(409, "That warning is already being tracked.")
+    now = utcnow()
+    path = nws.warning_path(a, now)
+    mv = a.get("motion") or {}
+    area = a["area"].split(";")[0].strip() or "storm"
+    e = StormEvent(name=f"Tornado Warning — {area}"[:80], kind=TORNADO, source="nws", nhc_id=key, category=path["ef"],
+                   max_wind_mph=EF_WIND[path["ef"]] + 10, pressure_mb=995, lat=path["points"][0][0], lng=path["points"][0][1],
+                   movement=f"{nhc._compass(mv['heading_deg'])} at {mv['speed_mph']} mph" if mv else "", landfall_at=path["touchdown"],
+                   created_by=user.id, track=path_track([path], path["touchdown"], now),
+                   notes=f"Imported from NWS: {a['headline']}. Detection: {a['detection'] or 'n/a'}; damage threat: {a['damage_threat'] or 'base'}. "
+                         f"Planning path {path['length_mi']} mi along the storm motion, rated EF{path['ef']} from the warning tags; "
+                         "replace it with the damage survey once available.")
+    s.add(e)
+    s.flush()
+    bus.audit(s, user.name, "event.imported", "storm_event", e.id, f"{e.name} imported from NWS ({a['event']})", e.id)
+    res = predict(s, e)
+    s.add(PredictionRun(event_id=e.id, category=res["category"], result=res, created_by=user.id))
+    s.commit()
+    bus.publish("events")
+    return serial.event(e)
+
+
+class PathIn(BaseModel):
+    ef: int = Field(ge=0, le=5)
+    width_m: int | None = Field(None, ge=30, le=4000)
+    points: list[list[float]] = Field(min_length=2)
+    start_h: float = 0
+    mph: float = Field(30, gt=0, le=90)
+
+
+class PathsIn(BaseModel):
+    paths: list[PathIn] | None = None
+    csv: str | None = None  # path,ef,width_m,lat,lng — one row per point
+    surveyed: bool = True   # NWS damage survey (observed) vs a revised planning path
+
+
+def parse_path_csv(text: str) -> list[dict]:
+    import csv as csvlib
+    import io
+    rows = list(csvlib.DictReader(io.StringIO(text.strip())))
+    if not rows or not {"ef", "lat", "lng"} <= {k.strip().lower() for k in rows[0]}:
+        raise HTTPException(422, "CSV needs a header: path,ef,width_m,lat,lng (one row per point along each path)")
+    paths: dict[str, dict] = {}
+    for i, raw in enumerate(rows, 2):
+        r = {k.strip().lower(): (v or "").strip() for k, v in raw.items() if k}
+        try:
+            p = paths.setdefault(r.get("path") or "1", {"ef": int(r["ef"]), "width_m": int(float(r["width_m"])) if r.get("width_m") else None, "points": []})
+            p["points"].append([float(r["lat"]), float(r["lng"])])
+        except (ValueError, KeyError):
+            raise HTTPException(422, f"Row {i}: ef, lat and lng must be numbers.")
+    return list(paths.values())
+
+
+@router.put("/events/{event_id}/paths")
+def replace_paths(event_id: int, body: PathsIn, s: Session = Depends(get_session), user: User = Depends(require("events.manage"))):
+    """Replace a tornado event's damage paths (e.g. with the NWS damage survey) and re-run the prediction on them."""
+    e = get_event(s, event_id)
+    if e.kind != TORNADO:
+        raise HTTPException(409, "Damage paths apply to tornado events only.")
+    raw = parse_path_csv(body.csv) if body.csv else [p.model_dump() for p in body.paths or []]
+    if not raw:
+        raise HTTPException(422, "Give at least one path with two or more points.")
+    paths = []
+    for i, p in enumerate(raw, 1):
+        p = PathIn(**p).model_dump()  # validates CSV rows too
+        if any(not (-90 <= la <= 90 and -180 <= ln <= 180) for la, ln in p["points"]):
+            raise HTTPException(422, f"Path {i}: points must be [lat, lng].")
+        paths.append(p | {"width_m": p["width_m"] or EF_WIDTH_M[p["ef"]]})
+    now = utcnow()
+    track = path_track(paths, e.landfall_at or now, now)
+    if body.surveyed:
+        for pt in track:
+            pt["observed"] = True
+    e.track, e.category = track, max(p["ef"] for p in paths)
+    e.lat, e.lng = paths[0]["points"][0]
+    e.max_wind_mph = EF_WIND[e.category] + 10
+    res = predict(s, e)
+    s.add(PredictionRun(event_id=e.id, category=res["category"], result=res, created_by=user.id))
+    label = "NWS damage survey" if body.surveyed else "revised planning paths"
+    bus.audit(s, user.name, "event.paths", "storm_event", e.id, f"{e.name}: {len(paths)} damage path(s) from the {label}; prediction re-run: "
+              f"{res['pred_total']:,} customers, {res['circuits_in_path']} circuits in the paths", e.id)
+    s.commit()
+    bus.publish("events")
+    return {**serial.event(e), "prediction": {"pred_total": res["pred_total"], "circuits_in_path": res["circuits_in_path"]}}
 
 
 # ---------------------------------------------------------------- tasks

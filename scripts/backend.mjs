@@ -2,7 +2,7 @@
 //   node scripts/backend.mjs setup    create backend/.venv and install requirements
 //   node scripts/backend.mjs serve    run the API (+ built UI) on :8000
 //   node scripts/backend.mjs dev      run the API with auto-reload on :8000
-//   node scripts/backend.mjs test     run pytest
+//   node scripts/backend.mjs test     run pytest: the Tampa / hurricane suite, then the Oklahoma / tornado suite (one process each)
 import { spawnSync } from "node:child_process";
 import { existsSync } from "node:fs";
 import { dirname, join } from "node:path";
@@ -37,6 +37,6 @@ else {
   if (cmd === "serve") run(venvPy, ["-m", "uvicorn", "app.main:app", "--host", "127.0.0.1", "--port", "8000"]);
   // Reload only on app code changes (not tests or the database files), so edits elsewhere don't bounce the API.
   else if (cmd === "dev") run(venvPy, ["-m", "uvicorn", "app.main:app", "--reload", "--reload-dir", "app", "--host", "127.0.0.1", "--port", "8000"]);
-  else if (cmd === "test") run(venvPy, ["-m", "pytest", "-q"]);
+  else if (cmd === "test") { run(venvPy, ["-m", "pytest", "-q", "tests"]); run(venvPy, ["-m", "pytest", "-q", "tests_oklahoma"]); }
   else { console.error("usage: node scripts/backend.mjs setup|serve|dev|test"); process.exit(1); }
 }

@@ -12,6 +12,7 @@ import type { Audit, User, Weather } from "../api/types";
 import { useAuth } from "../auth/AuthContext";
 import { Loading, PageHeader } from "../components/common";
 import { NetworkAdmin } from "../components/NetworkAdmin";
+import { PROFILE } from "../lib/profile";
 import { ago, dt, fmt } from "../lib/format";
 
 const ROLES = [{ value: "executive", label: "Executive" }, { value: "ops_manager", label: "Operations Manager" }, { value: "dispatcher", label: "Dispatcher" },
@@ -103,7 +104,7 @@ function Zones() {
             </Table.Tr>);
         })}</Table.Tbody>
       </Table>
-      <Text size="xs" c="dimmed" p="sm">Vulnerability (0.1–1.0) combines overhead exposure, tree canopy and surge risk; it drives the outage prediction for the zone.</Text>
+      <Text size="xs" c="dimmed" p="sm">Vulnerability (0.1–1.0) combines overhead exposure, tree canopy, plant age and {PROFILE.hazard === "tornado" ? "storm exposure" : "surge risk"}; it drives the outage prediction for the zone.</Text>
     </Card>
   );
 }
@@ -140,7 +141,7 @@ function Integrations() {
           {wx.data && !wx.data.error && wx.data.key_error && <Alert color="yellow" mt="sm" p="xs">
             The OpenWeather key isn't working ({wx.data.key_error}). Weather is coming from Open-Meteo in the meantime, and radar overlays are off.
             New OpenWeather keys can take up to 2 hours to activate. Paste it again and use Save & test to retry.</Alert>}
-          {wx.data && !wx.data.error && <Text size="xs" c="dimmed" mt="sm">Tampa now: {Math.round(wx.data.temp_f)}°F, {wx.data.description}, wind {Math.round(wx.data.wind_mph)} mph · updated {ago(wx.data.updated_at)}</Text>}
+          {wx.data && !wx.data.error && <Text size="xs" c="dimmed" mt="sm">{PROFILE.weather_label} now: {Math.round(wx.data.temp_f)}°F, {wx.data.description}, wind {Math.round(wx.data.wind_mph)} mph · updated {ago(wx.data.updated_at)}</Text>}
         </Card>
       </Grid.Col>
       <Grid.Col span={12}>
@@ -148,7 +149,10 @@ function Integrations() {
           <Table>
             <Table.Thead><Table.Tr><Table.Th>System</Table.Th><Table.Th>Purpose</Table.Th><Table.Th>Status</Table.Th></Table.Tr></Table.Thead>
             <Table.Tbody>{[
-              ["National Hurricane Center", "Active storm positions and intensity (CurrentStorms.json)", "Live"],
+              PROFILE.hazard === "tornado"
+                ? ["Storm Prediction Center / NWS", "Convective outlooks, tornado watches and warnings (planning paths)", "Sandbox"]
+                : ["National Hurricane Center", "Active storm positions and intensity (CurrentStorms.json)", "Live"],
+              ["Asset register", "Transformer age, inspections, DGA and loading (CSV import below)", "Sandbox register"],
               ["Weather", "Current conditions & forecast for the service territory", !wx.data || wx.data.error ? "Unavailable" : wx.data.key_error ? "Live (Open-Meteo fallback)" : "Live"],
               ["OMS / AMI / SCADA", "Outage intake and restoration confirmation", data.connector_mode === "off" ? "Off" : "Sandbox"],
               ["Field mobile app", "Crew acceptance, on-site and restored updates", data.connector_mode === "off" ? "Off" : "Sandbox"],

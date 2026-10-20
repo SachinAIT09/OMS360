@@ -15,6 +15,7 @@ import { useAuth } from "../auth/AuthContext";
 import { useCurrentEvent } from "../auth/EventContext";
 import { MessageStatusBadge } from "../components/badges";
 import { Empty, Loading, PageHeader, Stat } from "../components/common";
+import { PROFILE } from "../lib/profile";
 import { ago, dt, fmt } from "../lib/format";
 
 const CH_ICON: Record<string, JSX.Element> = {
@@ -178,7 +179,7 @@ function Compose({ eventId, message, audiences, onClose }: { eventId: number; me
         <Grid.Col span={{ base: 12, md: 5 }}>
           <Text size="sm" fw={600} mb={6}>Preview</Text>
           <Paper withBorder p="md" radius="lg" bg={channel === "sms" ? "var(--mantine-color-default-hover)" : undefined}>
-            <Group gap={6} mb="xs">{CH_ICON[channel]}<Text size="xs" c="dimmed">{ref.data?.channels[channel]} · Bayview Power & Water</Text></Group>
+            <Group gap={6} mb="xs">{CH_ICON[channel]}<Text size="xs" c="dimmed">{ref.data?.channels[channel]} · {PROFILE.utility}</Text></Group>
             {subject && <Text fw={600} size="sm">{subject}</Text>}
             <Text size="sm" className="pre-wrap">{body || <Text span c="dimmed">Your message will appear here.</Text>}</Text>
           </Paper>

@@ -8,7 +8,11 @@ from sqlalchemy.orm import Session, sessionmaker
 
 from .models import Base, Setting
 
-DB_PATH = Path(os.environ.get("OMS360_DB", Path(__file__).resolve().parent.parent / "data" / "oms360.sqlite"))
+from .territories import NAME as TERRITORY
+
+# One database per territory, so switching OMS360_TERRITORY never mixes networks (Tampa keeps the original file name).
+_DEFAULT_DB = Path(__file__).resolve().parent.parent / "data" / ("oms360.sqlite" if TERRITORY == "tampa" else f"oms360-{TERRITORY}.sqlite")
+DB_PATH = Path(os.environ.get("OMS360_DB") or _DEFAULT_DB)
 DB_PATH.parent.mkdir(parents=True, exist_ok=True)
 engine = create_engine(f"sqlite:///{DB_PATH}", connect_args={"check_same_thread": False, "timeout": 30})
 
@@ -59,14 +63,17 @@ def _add_columns(table: str, columns: dict[str, str]) -> None:
 
 def init_db() -> None:
     from .seed import ensure_demo_activity, ensure_forecast_demo, ensure_network_hierarchy, ensure_rain_demo, seed_if_empty
+    from .services.assets import ensure_assets
     Base.metadata.create_all(engine)
     _upgrade_chat()
     _add_columns("storm_events", {"rain_total_in": "FLOAT", "rain_rate_in_hr": "FLOAT", "duration_h": "FLOAT", "soil_saturation": "FLOAT"})
     _add_columns("zones", {"region_id": "VARCHAR(20) REFERENCES regions(id)"})
+    _add_columns("published_circuit_etrs", {"restored_at": "DATETIME"})
     _add_columns("feeders", {"substation_id": "VARCHAR(20) REFERENCES substations(id)", "route": "JSON", "route_source": "VARCHAR(12)"})
     with SessionLocal() as s:
         seed_if_empty(s)
         ensure_network_hierarchy(s)
+        ensure_assets(s)  # databases created before the asset register existed
         ensure_demo_admin(s)
         ensure_demo_activity(s)
         ensure_rain_demo(s)

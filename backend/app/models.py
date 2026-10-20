@@ -121,6 +121,42 @@ class Facility(Base):
     backup: Mapped[str] = mapped_column(String(60))
 
 
+class Asset(Base):
+    """Major equipment with age and condition: substation power transformers and distribution transformers.
+    Inputs come from the asset register and inspections; health_index … replacement_cost are computed by
+    services/assets.py and stored so the network can be ranked without recomputing it."""
+    __tablename__ = "assets"
+    id: Mapped[str] = mapped_column(String(24), primary_key=True)  # PT-OKC-1-1, DT-OKC-01-0042
+    kind: Mapped[str] = mapped_column(String(20), index=True)  # power_transformer | dist_transformer
+    name: Mapped[str] = mapped_column(String(80))
+    substation_id: Mapped[str | None] = mapped_column(String(20), index=True, nullable=True)
+    feeder_id: Mapped[str | None] = mapped_column(String(20), index=True, nullable=True)  # None for substation units
+    zone_id: Mapped[str] = mapped_column(String(10))
+    lat: Mapped[float] = mapped_column(Float)
+    lng: Mapped[float] = mapped_column(Float)
+    install_year: Mapped[int] = mapped_column(Integer)
+    manufacturer: Mapped[str] = mapped_column(String(40), default="")
+    rating_kva: Mapped[float] = mapped_column(Float)  # power transformers: kVA too (e.g. 28000 = 28 MVA)
+    mounting: Mapped[str] = mapped_column(String(10))  # pole | pad | sub
+    phases: Mapped[int] = mapped_column(Integer, default=1)
+    last_inspection: Mapped[int | None] = mapped_column(Integer, nullable=True)  # year
+    inspection_score: Mapped[int | None] = mapped_column(Integer, nullable=True)  # 1 good … 5 very poor
+    peak_load_pct: Mapped[float | None] = mapped_column(Float, nullable=True)
+    # power transformers only (oil and history)
+    dga_tdcg_ppm: Mapped[float | None] = mapped_column(Float, nullable=True)  # total dissolved combustible gas
+    oil_moisture_ppm: Mapped[float | None] = mapped_column(Float, nullable=True)
+    through_faults: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    ltc: Mapped[bool] = mapped_column(Boolean, default=False)  # on-load tap changer fitted
+    maintenance_overdue: Mapped[bool] = mapped_column(Boolean, default=False)
+    # computed
+    health_index: Mapped[float] = mapped_column(Float, default=100)  # 0 end of life … 100 as new
+    condition: Mapped[str] = mapped_column(String(10), default="Good")  # Good | Fair | Poor | Critical
+    pof_12m: Mapped[float] = mapped_column(Float, default=0)  # probability of failure in the next 12 months
+    risk_score: Mapped[float] = mapped_column(Float, default=0)  # PoF × consequence (customer-weighted)
+    replacement_cost: Mapped[float] = mapped_column(Float, default=0)
+    drivers: Mapped[list] = mapped_column(JSON, default=list)  # what pulls the health index down, worst first
+
+
 class StagingYard(Base):
     __tablename__ = "staging_yards"
     id: Mapped[int] = mapped_column(primary_key=True)
@@ -352,6 +388,7 @@ class PublishedCircuitEtr(Base):
     confidence: Mapped[int] = mapped_column(Integer)
     published_by: Mapped[str] = mapped_column(String(80))
     published_at: Mapped[datetime] = mapped_column(TS, default=utcnow)
+    restored_at: Mapped[datetime | None] = mapped_column(TS, nullable=True)  # when customers were told power is back
 
 
 # ------------------------------------------------------------------ platform

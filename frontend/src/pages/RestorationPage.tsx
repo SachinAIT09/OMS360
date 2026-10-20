@@ -98,7 +98,7 @@ export default function RestorationPage() {
             </Table.Tbody>
           </Table>
         </Table.ScrollContainer>
-        <Text size="xs" c="dimmed" p="sm">ETR = remaining work in the zone (job hours by damage type; storm surge ×2.3, flooding ×1.8) ÷ crews working there plus a share of idle crews. Assigned tickets use their committed ETR. Recalculated whenever tickets or crews change.</Text>
+        <Text size="xs" c="dimmed" p="sm">ETR = remaining work in the zone (job hours by damage type; tornado ×2.8, storm surge ×2.3, flooding ×1.8, hail ×1.2) ÷ crews working there plus a share of idle crews. Assigned tickets use their committed ETR. Recalculated whenever tickets or crews change.</Text>
       </Card>}
     </>
   );

@@ -7,7 +7,7 @@ import {
 import { useDisclosure, useMediaQuery } from "@mantine/hooks";
 import { Spotlight, type SpotlightActionData } from "@mantine/spotlight";
 import {
-  IconBell, IconBolt, IconBrain, IconBroadcast, IconChartBar, IconCloudStorm, IconExternalLink, IconLayoutDashboard, IconLogout, IconMoon,
+  IconActivityHeartbeat, IconBell, IconBolt, IconBrain, IconBroadcast, IconChartBar, IconCloudStorm, IconExternalLink, IconLayoutDashboard, IconLogout, IconMoon,
   IconSearch, IconSettings, IconSun, IconTool, IconTruck,
 } from "@tabler/icons-react";
 import { useQueryClient } from "@tanstack/react-query";
@@ -18,6 +18,7 @@ import { useAuth } from "../auth/AuthContext";
 import { EventProvider, useCurrentEvent } from "../auth/EventContext";
 import { EventStatusBadge } from "../components/badges";
 import { useLiveUpdates } from "../lib/live";
+import { PROFILE } from "../lib/profile";
 
 const LOGO = "https://d7umqicpi7263.cloudfront.net/img/product/f93e9a80-bf37-4444-9934-14f54d16daef.com/3b20a3af2ab95662337f13eca910ef71";
 
@@ -32,6 +33,7 @@ const NAV = [
   { group: "Customers", items: [{ to: "/communications", label: "Communications", icon: IconBroadcast }] },
   { group: "Intelligence", items: [
     { to: "/jarvis", label: "AI Assistant", icon: IconBrain },
+    { to: "/asset-health", label: "Asset Health", icon: IconActivityHeartbeat },
     { to: "/reports", label: "Reports", icon: IconChartBar },
   ] },
 ];
@@ -108,9 +110,9 @@ function Shell() {
         </AppShell.Section>
         <AppShell.Section>
           <Divider mb="sm" />
-          <NavLink component="a" href="/outage-map" target="_blank" label="Public outage map" description="bayviewpw.example/outages"
+          <NavLink component="a" href="/outage-map" target="_blank" label="Public outage map" description={PROFILE.site}
             leftSection={<IconExternalLink size={18} stroke={1.6} />} style={{ borderRadius: 8 }} />
-          <Text size="xs" c="dimmed" px={14} mt="xs" truncate className="app-nav-fade">Bayview Power & Water · {user?.role_label}</Text>
+          <Text size="xs" c="dimmed" px={14} mt="xs" truncate className="app-nav-fade">{PROFILE.utility} · {user?.role_label}</Text>
         </AppShell.Section>
       </AppShell.Navbar>
 
@@ -161,7 +163,7 @@ function SearchButton() {
   const { data = [], isFetching } = useGet<{ type: string; id: number; label: string; sub: string }[]>(q.trim().length >= 2 ? `/search?q=${encodeURIComponent(q.trim())}` : null);
   const pages: SpotlightActionData[] = [
     ["/", "Overview"], ["/events", "Storm events"], ["/outages", "Outages"], ["/restoration", "Restoration & ETR"], ["/crews", "Crews & mutual aid"],
-    ["/communications", "Communications"], ["/jarvis", "AI Assistant"], ["/reports", "Reports"],
+    ["/communications", "Communications"], ["/jarvis", "AI Assistant"], ["/asset-health", "Asset health"], ["/reports", "Reports"],
   ].map(([to, l]) => ({ id: `p${to}`, label: l, description: "Go to page", onClick: () => go(to) }));
   const results: SpotlightActionData[] = data.map(r => ({
     id: `${r.type}${r.id}`, label: r.label, description: `${r.type} · ${r.sub}`,
@@ -179,9 +181,9 @@ function WeatherChip() {
   const { data } = useGet<Weather>("/weather", { refetchInterval: 600_000 });
   if (!data || data.error) return null;
   return (
-    <Tooltip label={`Live weather · Tampa · ${data.source}`}>
+    <Tooltip label={`Live weather · ${PROFILE.weather_label} · ${data.source}`}>
       <Badge variant="outline" color="teal" size="lg" leftSection={<span className="pulse-dot" />} visibleFrom="lg" style={{ textTransform: "none" }}>
-        Tampa {Math.round(data.temp_f)}°F · {Math.round(data.wind_mph)} mph
+        {PROFILE.weather_label} {Math.round(data.temp_f)}°F · {Math.round(data.wind_mph)} mph
       </Badge>
     </Tooltip>
   );

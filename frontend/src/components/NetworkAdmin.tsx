@@ -5,20 +5,28 @@ import { IconFileUpload, IconRefresh } from "@tabler/icons-react";
 import { api } from "../api/client";
 import { useAction, useRoutes } from "../api/hooks";
 import { fmt } from "../lib/format";
+import { PROFILE } from "../lib/profile";
 import { Loading, SectionTitle } from "./common";
 import { TerritoryMap } from "./TerritoryMap";
 
 interface ImportResult { matched: number; unmatched: number; unmatched_ids: string[]; missing_id: number }
 
-const TEMPLATE = {
-  type: "FeatureCollection",
-  features: [
-    { type: "Feature", properties: { feeder_id: "FDR-TPA-01", substation: "Tampa North", customers: 6200 },
-      geometry: { type: "LineString", coordinates: [[-82.47, 27.962], [-82.47, 27.97], [-82.462, 27.97], [-82.462, 27.978]] } },
-    { type: "Feature", properties: { feeder_id: "FDR-TPA-02", substation: "Tampa North", customers: 5400 },
-      geometry: { type: "MultiLineString", coordinates: [[[-82.47, 27.962], [-82.478, 27.962], [-82.478, 27.955]], [[-82.478, 27.962], [-82.486, 27.962]]] } },
-  ],
-};
+/** A two-feeder example in the active territory (GeoJSON is [lng, lat]). */
+function templateGeoJson(feeders: { id: string; substation: string | null; route: [number, number][][] }[]) {
+  const [a, b] = feeders.filter(f => f.route.length);
+  const geo = (r: [number, number][][]) => r.map(line => line.map(([lat, lng]) => [lng, lat]));
+  const [lat, lng] = PROFILE.map_center;
+  return {
+    type: "FeatureCollection",
+    features: a && b ? [
+      { type: "Feature", properties: { feeder_id: a.id, substation: a.substation, customers: 6200 }, geometry: { type: "MultiLineString", coordinates: geo(a.route) } },
+      { type: "Feature", properties: { feeder_id: b.id, substation: b.substation, customers: 5400 }, geometry: { type: "MultiLineString", coordinates: geo(b.route) } },
+    ] : [
+      { type: "Feature", properties: { feeder_id: "FDR-XXX-01", substation: "Example North", customers: 6200 },
+        geometry: { type: "LineString", coordinates: [[lng, lat], [lng, lat + 0.008], [lng + 0.008, lat + 0.008]] } },
+    ],
+  };
+}
 
 /** Circuit routes: where they come from and how to load the utility's GIS export. */
 export function NetworkAdmin() {
@@ -41,7 +49,7 @@ export function NetworkAdmin() {
     try { setResult(await imp.mutateAsync(json)); } catch (e) { setErr((e as Error).message); }
   };
   const template = () => {
-    const url = URL.createObjectURL(new Blob([JSON.stringify(TEMPLATE, null, 2)], { type: "application/geo+json" }));
+    const url = URL.createObjectURL(new Blob([JSON.stringify(templateGeoJson(routes.data?.feeders ?? []), null, 2)], { type: "application/geo+json" }));
     const a = Object.assign(document.createElement("a"), { href: url, download: "feeder-routes-template.geojson" });
     a.click();
     URL.revokeObjectURL(url);

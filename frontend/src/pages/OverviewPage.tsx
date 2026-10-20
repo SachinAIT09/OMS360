@@ -14,6 +14,7 @@ import { Empty, ErrorState, Loading, PageHeader, SectionTitle, Stat } from "../c
 import { EventLifecycle } from "../components/EventLifecycle";
 import { RecommendationCard } from "../components/RecommendationCard";
 import { MapLegend, TerritoryMap } from "../components/TerritoryMap";
+import { PROFILE } from "../lib/profile";
 import { ago, dt, dtShort, fmt, hoursUntil, impactWord, intensity, isRain, pct, scenario, sevColor } from "../lib/format";
 
 export default function OverviewPage() {
@@ -25,7 +26,7 @@ export default function OverviewPage() {
   const recs = useGet<Recommendation[]>(event ? `/events/${event.id}/recommendations` : null);
   const doneTask = useAction((id: number) => api.post(`/tasks/${id}/done`), { success: "Task completed" });
 
-  if (!event) return <Empty title="No storm events yet" icon={<IconCloudStorm />}>Create an event or import one from the National Hurricane Center.
+  if (!event) return <Empty title="No storm events yet" icon={<IconCloudStorm />}>{PROFILE.hazard === "hurricane" ? "Create an event or import one from the National Hurricane Center." : "Create a storm event to start planning."}
     <Button mt="md" onClick={() => go("/events")}>Go to Storm Events</Button></Empty>;
   if (ov.error) return <ErrorState error={ov.error} />;
   if (!ov.data || !ref.data) return <Loading />;

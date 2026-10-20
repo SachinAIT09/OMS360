@@ -24,7 +24,7 @@ from ..db import SessionLocal, get_setting
 from ..models import (Crew, Facility, Feeder, Message, MutualAidRequest, NotificationRule, Outage, StagingYard, StormEvent, Zone,
                       utcnow)
 from . import ops
-from .events import is_rain
+from .events import hazard, is_rain
 from .recommendations import latest_prediction
 
 log = logging.getLogger("oms360.connector")
@@ -46,15 +46,22 @@ def next_number(s: Session) -> str:
 
 
 def new_ticket(s: Session, e: StormEvent, zone: Zone, feeders: list[Feeder], mean_customers: float,
-               facilities: dict[str, Facility], rng: random.Random = _rng, at=None) -> Outage:
+               facilities: dict[str, Facility], rng: random.Random = _rng, at=None, core: float | None = None) -> Outage:
+    """core: for tornadoes, how directly the chosen circuit sits in a damage path (0–1); feeders then holds just that circuit."""
     f = rng.choice(feeders)
     fac = facilities.get(f.id)
+    damage_w = [25, 35, 25, 15]
     if is_rain(e):
         cause = rng.choices(["flooding", "tree", "equipment", "wind"], [45 if zone.coastal else 25, 45, 20, 5])[0]
+    elif hazard(e) == "tornado":
+        direct = core is not None and rng.random() < min(0.85, core * 1.1)
+        cause = "tornado" if direct else rng.choices(["wind", "hail", "tree", "equipment"], [40, 15, 35, 10])[0]
+        if direct:
+            damage_w = [10, 25, 30, 35]  # poles snapped and transformers torn down
     else:
         surge = zone.coastal and rng.random() < 0.4
         cause = "surge" if surge else rng.choices(["wind", "tree", "equipment", "flooding"], [45, 40, 10, 5])[0]
-    damage = rng.choices(["service", "conductor", "transformer", "pole"], [25, 35, 25, 15])[0]
+    damage = rng.choices(["service", "conductor", "transformer", "pole"], damage_w)[0]
     customers = max(1, int(mean_customers * rng.choice([0.05, 0.2, 0.5, 0.8, 1.2, 1.8, 3.0])))
     if damage == "service":
         customers = min(customers, rng.randint(1, 40))
@@ -92,7 +99,15 @@ def _intake(s: Session, e: StormEvent) -> int:
     mean = target / expected_tickets
     n = max(1, round(expected_tickets / ticks + _rng.random()))
     created = []
+    circuits = [c for c in (pr.result.get("circuits") or []) if c["pred"]] if pr and hazard(e) == "tornado" else []
+    by_id = {f.id: f for fs in feeders.values() for f in fs}
     for _ in range(n):
+        if circuits:  # a tornado's outages follow its circuits, not its zones
+            c = _rng.choices(circuits, [c["pred"] for c in circuits])[0]
+            f = by_id.get(c["id"])
+            if f:
+                created.append(new_ticket(s, e, zones[f.zone_id], [f], min(mean, c["pred"]), facilities, core=c.get("core", 0)))
+                continue
         zid = _rng.choices(list(weights), list(weights.values()))[0]
         created.append(new_ticket(s, e, zones[zid], feeders[zid], mean, facilities))
     rule = s.scalars(select(NotificationRule).where(NotificationRule.trigger == "outage_detected", NotificationRule.enabled.is_(True))).first()
@@ -112,7 +127,8 @@ def _outer_bands(s: Session, e: StormEvent) -> tuple[int, int]:
         feeders = s.scalars(select(Feeder).where(Feeder.zone_id == z.id)).all()
         facilities = {f.feeder_id: f for f in s.scalars(select(Facility)).all()}
         o = new_ticket(s, e, z, feeders, 70, facilities)
-        o.cause = _rng.choices(["wind", "tree", "equipment"], [45, 45, 10])[0]
+        o.cause = (_rng.choices(["wind", "hail", "tree", "equipment"], [40, 15, 35, 10]) if hazard(e) == "tornado"
+                   else _rng.choices(["wind", "tree", "equipment"], [45, 45, 10]))[0]
         o.customers = min(o.customers, _rng.randint(8, 900))
         created = 1
         rule = s.scalars(select(NotificationRule).where(NotificationRule.trigger == "outage_detected", NotificationRule.enabled.is_(True))).first()
@@ -136,7 +152,7 @@ def _field_progress(s: Session) -> int:
         changed += 1
     restored = 0
     for o in s.scalars(select(Outage).where(Outage.status == "in_progress")).all():
-        if o.started_at and (now - o.started_at).total_seconds() >= ops.job_hours(o) * SECONDS_PER_JOB_HOUR:
+        if o.started_at and (now - o.started_at).total_seconds() >= ops.ticket_hours(s, o) * SECONDS_PER_JOB_HOUR:
             ops.set_status(s, o, "restored", f"{o.crew.code if o.crew else 'Crew'} (mobile app)", "power restored, AMI confirms")
             restored += o.customers
             changed += 1

@@ -1,7 +1,7 @@
 """Live operations: ticket workflow, crew dispatch and ETRs computed from real records.
 
 ETR model
-  job hours(ticket)  = base hours by damage type × damage multiplier by cause (surge 2.3×, flooding 1.8×)
+  job hours(ticket)  = base hours by damage type × damage multiplier by cause × aging-transformer multiplier (ASSET_JOB_MULT) (tornado 2.8×, surge 2.3×, flooding 1.8×, hail 1.2×)
   assigned ticket    → committed ETR = assignment time + travel + job hours
   unassigned queue   → per zone, ordered by priority then customers; position k finishes at
                        now + travel + (cumulative job hours ≤ k) ÷ effective crews in zone
@@ -21,7 +21,7 @@ import math
 from collections import defaultdict
 from datetime import datetime, timedelta
 
-from sqlalchemy import func, select
+from sqlalchemy import case, func, select
 from sqlalchemy.orm import Session
 
 from .. import bus
@@ -30,7 +30,7 @@ from ..models import (Crew, Facility, Feeder, MutualAidRequest, Outage, OutageEv
 
 OPEN = ("reported", "assessed", "assigned", "in_progress")
 JOB_HOURS = {"service": 1.5, "conductor": 3.0, "transformer": 4.0, "pole": 6.0, "none": 1.0, "unknown": 3.0}
-CAUSE_MULT = {"surge": 2.3, "flooding": 1.8}
+CAUSE_MULT = {"surge": 2.3, "flooding": 1.8, "tornado": 2.8, "hail": 1.2}
 TRAVEL_H = 0.75
 PRIORITY_RANK = {"critical": 0, "high": 1, "normal": 2}
 TRANSITIONS = {
@@ -47,8 +47,28 @@ class OpsError(Exception):
     pass
 
 
-def job_hours(o: Outage) -> float:
-    return JOB_HOURS.get(o.damage, 3.0) * CAUSE_MULT.get(o.cause, 1.0)
+# Transformer and pole jobs take longer on circuits whose transformers are in Poor/Critical condition: units are replaced,
+# not re-fused, and corroded hardware fails on re-energising. Multiplier = 1 + this × the circuit's Poor/Critical share.
+ASSET_JOB_MULT = {"transformer": 0.6, "pole": 0.25, "unknown": 0.2}
+
+
+def job_hours(o: Outage, poor: float = 0.0) -> float:
+    """Crew hours for a ticket; `poor` = Poor/Critical transformer share on the ticket's circuit (see circuit_poor)."""
+    return JOB_HOURS.get(o.damage, 3.0) * CAUSE_MULT.get(o.cause, 1.0) * (1 + ASSET_JOB_MULT.get(o.damage, 0.0) * poor)
+
+
+def circuit_poor(s: Session, feeder_id: str | None) -> float:
+    """Share of a circuit's distribution transformers in Poor or Critical condition (0 without an asset register)."""
+    from ..models import Asset
+    if not feeder_id:
+        return 0.0
+    v = s.scalar(select(func.avg(case((Asset.condition.in_(("Poor", "Critical")), 1.0), else_=0.0)))
+                 .where(Asset.feeder_id == feeder_id, Asset.kind == "dist_transformer"))
+    return float(v or 0.0)
+
+
+def ticket_hours(s: Session, o: Outage) -> float:
+    return job_hours(o, circuit_poor(s, o.feeder_id))
 
 
 def log(s: Session, o: Outage, kind: str, text: str, user: str = "System") -> None:
@@ -69,7 +89,10 @@ def zone_etrs(s: Session, event: StormEvent, now: datetime | None = None) -> dic
     by_zone: dict[str, list[Outage]] = defaultdict(list)
     for t in tickets:
         by_zone[t.zone_id].append(t)
-    backlog = {z: sum(job_hours(t) for t in ts if t.status in ("reported", "assessed")) for z, ts in by_zone.items()}
+    from .assets import circuit_factors
+    poor = {fid: f["poor"] for fid, f in circuit_factors(s).items()}
+    hours = {t.id: job_hours(t, poor.get(t.feeder_id, 0.0)) for t in tickets}
+    backlog = {z: sum(hours[t.id] for t in ts if t.status in ("reported", "assessed")) for z, ts in by_zone.items()}
     total_backlog = sum(backlog.values()) or 1
 
     out: dict[str, dict] = {}
@@ -79,13 +102,13 @@ def zone_etrs(s: Session, event: StormEvent, now: datetime | None = None) -> dic
         ticket_etr: dict[int, datetime] = {}
         for t in ts:
             if t.status in ("assigned", "in_progress"):
-                etr = t.etr_at or (now + timedelta(hours=TRAVEL_H + job_hours(t)))
+                etr = t.etr_at or (now + timedelta(hours=TRAVEL_H + hours[t.id]))
                 ticket_etr[t.id] = etr
                 latest = max(latest, etr)
         queue = sorted((t for t in ts if t.status in ("reported", "assessed")), key=lambda t: (PRIORITY_RANK[t.priority], -t.customers))
         cum = 0.0
         for t in queue:
-            cum += job_hours(t)
+            cum += hours[t.id]
             etr = t.etr_at if t.etr_override and t.etr_at else now + timedelta(hours=TRAVEL_H + cum / eff)
             ticket_etr[t.id] = etr
             latest = max(latest, etr)
@@ -143,10 +166,20 @@ def network_etrs(s: Session, event: StormEvent, zetrs: dict | None = None) -> di
     record = zone_track_record(s)
     idle = s.scalar(select(func.count(Crew.id)).where(Crew.status.in_(["available", "staged"]), Crew.kind == "line")) or 0
     published = {p.feeder_id: p for p in s.scalars(select(PublishedCircuitEtr).where(PublishedCircuitEtr.event_id == event.id)).all()}
+    from .assets import circuit_factors
+    assets = circuit_factors(s)
 
     by_circuit: dict[str, list[Outage]] = defaultdict(list)
     for t in tickets:
         by_circuit[t.feeder_id].append(t)
+    crews_in: dict[str | None, set[int]] = defaultdict(set)  # region → crews working there
+    waiting_in: dict[str | None, list[Outage]] = defaultdict(list)  # region → tickets waiting for a crew
+    for t in tickets:
+        rid = (idx.get(t.feeder_id) or {}).get("region_id")
+        if t.crew_id and t.status in ("assigned", "in_progress"):
+            crews_in[rid].add(t.crew_id)
+        if t.status in ("reported", "assessed"):
+            waiting_in[rid].append(t)
     circuits = []
     for fid, ts in by_circuit.items():
         info = idx.get(fid) or {"customers": None, "substation_id": None, "substation": None, "lat": ts[0].lat, "lng": ts[0].lng,
@@ -158,7 +191,9 @@ def network_etrs(s: Session, event: StormEvent, zetrs: dict | None = None) -> di
         circuits.append({"id": fid, **info, "customers_out": sum(t.customers for t in ts), "open_tickets": len(ts),
                          "crews": len({t.crew_id for t in ts if t.crew_id}), "etr_at": _round30(max(etrs)) if etrs else None,
                          "confidence": int(max(30, min(95, round(conf)))), "published": pub is not None,
-                         "published_at": pub.published_at if pub else None})
+                         "published_at": pub.published_at if pub else None,
+                         "asset_hi": round(assets[fid]["hi"], 1) if fid in assets else None,
+                         "pct_poor": round(assets[fid]["poor"], 3) if fid in assets else None})
     circuits.sort(key=lambda c: (c["etr_at"] is None, c["etr_at"]), reverse=True)
 
     regions = []
@@ -169,6 +204,8 @@ def network_etrs(s: Session, event: StormEvent, zetrs: dict | None = None) -> di
                         "customers_out": out, "open_tickets": sum(c["open_tickets"] for c in cs), "circuits_out": len(cs),
                         "etr_at": max((c["etr_at"] for c in cs if c["etr_at"]), default=None),
                         "confidence": round(sum(c["confidence"] * c["customers_out"] for c in cs) / out) if out else None,
+                        "crews": len(crews_in[r.id]), "waiting": len(waiting_in[r.id]),
+                        "backlog_h": round(sum(job_hours(t, assets.get(t.feeder_id, {}).get("poor", 0.0)) for t in waiting_in[r.id]), 1),
                         "circuits_published": sum(1 for c in cs if c["published"]),
                         "circuits_ready": sum(1 for c in cs if not c["published"] and c["confidence"] >= PUBLISH_CONFIDENCE)})
     return {"circuits": circuits, "regions": regions}
@@ -303,7 +340,7 @@ def assign(s: Session, o: Outage, crew: Crew, user: str) -> None:
     o.status = "assigned"
     o.assigned_at = now
     if not o.etr_override:
-        o.etr_at = _round30(now + timedelta(hours=TRAVEL_H + job_hours(o)))
+        o.etr_at = _round30(now + timedelta(hours=TRAVEL_H + ticket_hours(s, o)))
     crew.status = "assigned"
     log(s, o, "assigned", f"Assigned to {crew.code} ({crew.company}, {crew.size} workers). Committed ETR set.", user)
 

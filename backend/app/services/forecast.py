@@ -18,9 +18,9 @@ from datetime import datetime, timedelta
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from ..data import SURGE_BY_CAT, TRACK, WIND_BY_CAT
+from ..data import RAIN_GRADIENT, SAMPLE_FORECAST_CSV, SURGE_BY_CAT, WIND_BY_CAT, WEATHER_POINT
 from ..models import ForecastRun, StormEvent, Zone, utcnow
-from .events import is_rain
+from .events import hazard, is_rain
 
 PARENT_SOURCE = "Parent-company storm model"
 FIELDS = ("gust_mph", "rain_in", "surge_ft")
@@ -41,8 +41,10 @@ def _km(lat1: float, lng1: float, lat2: float, lng2: float) -> float:
 
 def mock_parent_forecast(s: Session, e: StormEvent, seed: int | None = None) -> list[dict]:
     """Sandbox stand-in for the parent model's output: hazard decays with distance from the forecast track
-    (hurricanes) or follows a north–south rainfall gradient (rain events). Scaled so the territory as a whole matches
-    the event's advisory intensity (category / rainfall total): the parent model adds where, not how strong."""
+    (hurricanes), follows a north–south rainfall gradient (rain events), or — for tornadoes — gives the parent
+    supercells' straight-line gusts and hail-core rain around the damage paths (the paths themselves drive the circuit
+    prediction). Scaled so the territory as a whole matches the event's advisory intensity: the parent model adds where,
+    not how strong."""
     from .prediction import wind_factor
     from ..data import CATF
     rng = random.Random(seed if seed is not None else e.id * 7919)
@@ -53,8 +55,9 @@ def mock_parent_forecast(s: Session, e: StormEvent, seed: int | None = None) -> 
     if is_rain(e):
         total = e.rain_total_in or 4.0
         shape = {}
+        g = RAIN_GRADIENT
         for z in zones:
-            south = min(1.0, max(0.0, (28.05 - z.lat) / 0.33))  # bands stall over the South Shore
+            south = min(1.0, max(0.0, g["sign"] * (z.lat - g["ref_lat"]) / g["spread"]))  # where the bands stall (e.g. the South Shore)
             shape[z.id] = (south, (0.7 + 0.6 * south) * rng.uniform(0.92, 1.08))
         k = total / (sum(shape[z.id][1] * z.customers for z in zones) / total_cust)
         for z in zones:
@@ -62,8 +65,18 @@ def mock_parent_forecast(s: Session, e: StormEvent, seed: int | None = None) -> 
             out.append({"zone_id": z.id, "gust_mph": round(rng.uniform(25, 40)), "rain_in": round(min(40, k * f), 1), "surge_ft": 0.0,
                         "arrival_at": (onset + timedelta(hours=(1 - south) * 3)).isoformat()})
         return out
+    if hazard(e) == "tornado":
+        pts = [(p["lat"], p["lng"]) for p in (e.track or [])] or [(e.lat, e.lng)]
+        for z in zones:
+            d = min(_km(z.lat, z.lng, la, ln) for la, ln in pts)
+            near = min(pts, key=lambda p: _km(z.lat, z.lng, *p))
+            at = next((p.get("at") for p in (e.track or []) if (p["lat"], p["lng"]) == near and p.get("at")), None)
+            out.append({"zone_id": z.id, "gust_mph": round(min(95, 40 + (25 + 6 * e.category) * math.exp(-d / 30)) * rng.uniform(0.95, 1.05)),
+                        "rain_in": round((0.4 + 1.6 * math.exp(-d / 40)) * rng.uniform(0.8, 1.2), 1), "surge_ft": 0.0,
+                        "arrival_at": at or (onset + timedelta(hours=d / 50)).isoformat()})
+        return out
     cat = max(1, min(5, e.category))
-    pts = [(p["lat"], p["lng"]) for p in (e.track or [])] or [(TRACK[4][0], TRACK[4][1])]
+    pts = [(p["lat"], p["lng"]) for p in (e.track or [])] or [(WEATHER_POINT["lat"], WEATHER_POINT["lon"])]
     lo, hi = (float(x) for x in SURGE_BY_CAT[cat].replace(" ft", "").split("–"))
     dist = {z.id: min(_km(z.lat, z.lng, la, ln) for la, ln in pts) for z in zones}
     shape = {z.id: max(0.55, math.exp(-dist[z.id] / 140)) * rng.uniform(0.95, 1.05) for z in zones}
@@ -89,7 +102,7 @@ def normalize(s: Session, rows: list[dict]) -> list[dict]:
     for i, r in enumerate(rows, 1):
         ref = str(r.get("zone") or r.get("zone_id") or "").strip().lower()
         if ref not in keys:
-            raise ForecastError(f"Row {i}: unknown zone '{ref}'. Use a zone id, code or name, e.g. tpa, TPA or Tampa.")
+            raise ForecastError(f"Row {i}: unknown zone '{ref}'. Use a zone id, code or name, e.g. {zones[0].id}, {zones[0].code} or {zones[0].short}.")
         h = {"zone_id": keys[ref]}
         for f in FIELDS:
             v = r.get(f)
@@ -127,7 +140,8 @@ def complete(s: Session, e: StormEvent, zones: list[dict]) -> list[dict]:
     """Zones the import left out keep the event-wide intensity, so a partial forecast still covers the territory."""
     have = {h["zone_id"] for h in zones}
     rain = is_rain(e)
-    filler = {"gust_mph": 30.0, "rain_in": e.rain_total_in or 4.0} if rain else {"gust_mph": WIND_BY_CAT[max(1, min(5, e.category))] * 1.25}
+    filler = ({"gust_mph": 30.0, "rain_in": e.rain_total_in or 4.0} if rain else {"gust_mph": 45.0} if hazard(e) == "tornado"
+              else {"gust_mph": WIND_BY_CAT[max(1, min(5, e.category))] * 1.25})
     return zones + [{"zone_id": z.id, **filler, "filled": True} for z in s.scalars(select(Zone)).all() if z.id not in have]
 
 
@@ -143,5 +157,4 @@ def serial(fc: ForecastRun, zone_names: dict[str, str]) -> dict:
             "zones": [h | {"zone": zone_names.get(h["zone_id"], h["zone_id"])} for h in fc.zones]}
 
 
-SAMPLE_CSV = "zone,gust_mph,rain_in,surge_ft,arrival_at\n" + "\n".join([
-    "tpa,128,9.5,8.5,", "apb,135,8.0,11.0,", "rsk,131,7.5,10.0,", "brn,104,7.0,0,", "plc,88,5.5,0,", "ltz,92,6.0,0,"])
+SAMPLE_CSV = SAMPLE_FORECAST_CSV

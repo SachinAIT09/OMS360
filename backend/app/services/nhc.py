@@ -12,7 +12,9 @@ import httpx
 FEED = "https://www.nhc.noaa.gov/CurrentStorms.json"
 CLASSIFICATION = {"TD": "Tropical Depression", "TS": "Tropical Storm", "HU": "Hurricane", "MH": "Major Hurricane",
                   "STD": "Subtropical Depression", "STS": "Subtropical Storm", "PTC": "Post-tropical Cyclone", "TY": "Typhoon"}
-TAMPA = (27.95, -82.46)
+from ..data import WEATHER_POINT
+
+HOME = (WEATHER_POINT["lat"], WEATHER_POINT["lon"])  # distance is reported to the territory's main city
 
 
 def kt_to_mph(kt: float) -> int:
@@ -47,14 +49,14 @@ def parse(feed: dict) -> list[dict]:
             at = datetime.fromisoformat(updated.replace("Z", "+00:00")) if updated else datetime.now(timezone.utc)
         except ValueError:
             at = datetime.now(timezone.utc)
-        dist = math.hypot((lat - TAMPA[0]) * 69, (lng - TAMPA[1]) * 69 * math.cos(math.radians(lat)))
+        dist = math.hypot((lat - HOME[0]) * 69, (lng - HOME[1]) * 69 * math.cos(math.radians(lat)))
         storms.append({
             "nhc_id": st.get("id", ""), "name": st.get("name", "Unnamed"),
             "kind": CLASSIFICATION.get(st.get("classification", ""), st.get("classification", "")),
             "lat": lat, "lng": lng, "wind_mph": mph, "category": saffir_simpson(mph),
             "pressure_mb": int(_num(st.get("pressure")) or 0), "heading_deg": heading, "speed_mph": speed_mph,
             "movement": f"{_compass(heading)} at {speed_mph} mph", "updated_at": at.isoformat(),
-            "distance_to_tampa_mi": round(dist), "advisory_url": (st.get("publicAdvisory") or {}).get("url", ""),
+            "distance_mi": round(dist), "advisory_url": (st.get("publicAdvisory") or {}).get("url", ""),
         })
     return storms
 

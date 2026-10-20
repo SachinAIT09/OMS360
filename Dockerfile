@@ -14,8 +14,10 @@ RUN npm run build
 FROM python:3.12-slim
 ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1 \
-    OMS360_DB=/data/oms360.sqlite \
+    OMS360_TERRITORY=oklahoma \
+    OMS360_DB=/data/oms360-oklahoma.sqlite \
     PORT=8000
+# For the Florida / hurricane demo run with: -e OMS360_TERRITORY=tampa -e OMS360_DB=/data/oms360.sqlite
 WORKDIR /app/backend
 COPY backend/requirements.txt ./
 RUN pip install --no-cache-dir -r requirements.txt

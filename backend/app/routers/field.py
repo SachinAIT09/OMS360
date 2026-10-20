@@ -97,7 +97,7 @@ def outage_detail(outage_id: int, s: Session = Depends(get_session), _: User = D
         e = s.get(StormEvent, o.event_id)
         etr = ops.zone_etrs(s, e).get(o.zone_id, {}).get("tickets", {}).get(o.id)
     fac = s.get(Facility, o.facility_id) if o.facility_id else None
-    return {**serial.outage(o, etr), "facility": fac.name if fac else None, "job_hours": round(ops.job_hours(o), 1),
+    return {**serial.outage(o, etr), "facility": fac.name if fac else None, "job_hours": round(ops.ticket_hours(s, o), 1),
             "history": [serial.outage_event(h) for h in reversed(o.history)], "allowed": sorted(ops.TRANSITIONS[o.status])}
 
 

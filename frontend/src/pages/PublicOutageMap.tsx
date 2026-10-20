@@ -4,6 +4,7 @@ import { useQuery } from "@tanstack/react-query";
 import { IconAlertTriangle, IconBolt, IconCircleCheck, IconClock, IconSearch } from "@tabler/icons-react";
 import { api, ApiError } from "../api/client";
 import { TerritoryMap } from "../components/TerritoryMap";
+import { PROFILE } from "../lib/profile";
 import { dt, fmt, pct } from "../lib/format";
 
 interface PublicMap {
@@ -37,7 +38,7 @@ export default function PublicOutageMap() {
       <Box bg="#0b3d91" c="white" py="md">
         <Container size="lg"><Group justify="space-between">
           <Group gap="sm"><Box w={32} h={32} style={{ borderRadius: 8, background: "linear-gradient(135deg,#6f9dff,#3ec46d)" }} />
-            <div><Text fw={700} size="lg" lh={1.1}>Bayview Power & Water</Text><Text size="xs" opacity={0.8}>Outage Center</Text></div></Group>
+            <div><Text fw={700} size="lg" lh={1.1}>{PROFILE.utility}</Text><Text size="xs" opacity={0.8}>Outage Center</Text></div></Group>
           <Group gap="lg" visibleFrom="sm"><Text size="sm">Outage map</Text><Text size="sm">Report an outage</Text><Text size="sm">Storm center</Text><Text size="sm">Alerts</Text></Group>
         </Group></Container>
       </Box>

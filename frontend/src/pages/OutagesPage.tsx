@@ -142,7 +142,7 @@ function NewTicketModal({ opened, onClose, eventId }: { opened: boolean; onClose
             <NumberInput label="Customers affected" min={1} max={100000} thousandSeparator {...form.getInputProps("customers")} />
           </Group>
           <Group grow>
-            <Select label="Cause" data={["wind", "tree", "surge", "flooding", "equipment", "unknown"].map(c => ({ value: c, label: label(c) }))} {...form.getInputProps("cause")} />
+            <Select label="Cause" data={["wind", "tree", "tornado", "hail", "surge", "flooding", "equipment", "unknown"].map(c => ({ value: c, label: label(c) }))} {...form.getInputProps("cause")} />
             <Select label="Damage" data={["service", "conductor", "transformer", "pole", "unknown"].map(c => ({ value: c, label: label(c) }))} {...form.getInputProps("damage")} />
             <Select label="Priority" data={["critical", "high", "normal"].map(c => ({ value: c, label: label(c) }))} {...form.getInputProps("priority")} />
           </Group>

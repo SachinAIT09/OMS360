@@ -8,14 +8,19 @@ import re
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
-from ..data import SURGE_BY_CAT
+from ..data import HAZARD, JARVIS_SUGGESTIONS, REGIONS, SITE, SURGE_BY_CAT, WEATHER_LABEL
 from ..fmt import fmt, fmt_dt, fmt_t, pct
 from ..models import Message, MutualAidRequest, Recommendation, StormEvent, Zone
 from . import comms, ops
 from .context import comms_context
-from .events import is_rain
+from .events import hazard, impact_word, is_rain, scale_label
 from .prediction import predict
 from .recommendations import latest_prediction
+
+
+# region names, longest first so "northeast" wins over "north"
+_REGION_RE = "|".join(sorted({w for r in REGIONS for w in [r["name"].lower(), r["id"]]}, key=len, reverse=True))
+ASSET_WORDS = r"transformer|asset|aging plant|ageing plant|oldest|health index"
 
 
 def _reply(text, bullets=None, actions=None, say="", quote=None):
@@ -37,7 +42,10 @@ def greeting(user_name: str, event: StormEvent | None) -> dict:
 def answer(s: Session, q_raw: str, e: StormEvent | None, weather: dict | None = None) -> dict:
     q = q_raw.lower().strip()
     if not e:
-        return _reply("There's no active storm event selected. Open **Storm Events** to create one or import from the National Hurricane Center.",
+        if re.search(ASSET_WORDS, q):
+            return _assets(s, q, None)
+        return _reply("There's no active storm event selected. Open **Storm Events** to create one" +
+                      (" or import from the National Hurricane Center." if HAZARD == "hurricane" else "."),
                       actions=[_nav("Storm Events", "/events")])
     pr = latest_prediction(s, e.id)
     p = pr.result if pr else None
@@ -45,11 +53,40 @@ def answer(s: Session, q_raw: str, e: StormEvent | None, weather: dict | None = 
     live = e.status in ("active", "restoring")
     zones = {z.short.lower(): z for z in s.scalars(select(Zone)).all()}
     zone = next((z for k, z in zones.items() if k in q), None)
-    cat_m = re.search(r"cat(?:egory)?\s*([1-5])", q)
+    cat_m = re.search(r"cat(?:egory)?\s*([1-5])", q) or re.search(r"\bef[\s-]?([0-5])\b", q)
     rain_m = re.search(r"(\d+(?:\.\d+)?)\s*(?:in|inch|inches|\")\b", q)
     rain = is_rain(e)
     ev = f"/events/{e.id}"
-    after = "after the rain starts" if rain else "after landfall"
+    tornado = hazard(e) == "tornado"
+    after = "after the rain starts" if rain else "after touchdown" if tornado else "after landfall"
+
+    if re.search(ASSET_WORDS, q):
+        return _assets(s, q, p)
+
+    if tornado and p and re.search(r"(in|on) the (tornado )?path|which circuits|circuits.*(hit|path)|damage path|rebuild", q):
+        hit = [c for c in p.get("circuits", []) if c.get("in_path")]
+        if not hit:
+            return _reply("No circuits are on the forecast damage paths.")
+        hit.sort(key=lambda c: -c["core"])
+        return _reply(f"**{len(hit)} circuits** are on the forecast damage paths ({fmt(sum(c['customers'] for c in hit))} customers). "
+                      f"Plan to rebuild, not repair, these:",
+                      [f"**{c['id']}** ({c['zone']}, {c['substation'] or 'n/a'}): EF{c['path_ef']} path {c['path_km']:.1f} km away, "
+                       f"{fmt(c['pred'])} out, ~{c['eta_h']:.0f} h" + (f", transformers HI {c['asset_hi']:.0f} ({pct(c['pct_poor'])} poor)" if c.get("asset_hi") is not None else "")
+                       for c in hit[:6]],
+                      [_nav("Open prediction", f"{ev}?tab=prediction"), _nav("Asset health", "/asset-health")],
+                      f"{len(hit)} circuits are in the tornado's path.")
+
+    if tornado and cat_m and re.search(r"what if|if it|becomes|scenario|stronger|worse|instead", q):
+        c = int(cat_m.group(1))
+        p2 = predict(s, e, c)
+        base = p["pred_total"] if p else 0
+        return _reply(f"If the main tornado is an **EF{c}**:",
+                      [f"Predicted outages: **{fmt(p2['pred_total'])}**" + (f" ({'+' if p2['pred_total'] >= base else ''}{fmt(p2['pred_total'] - base)} vs current prediction)" if p else ""),
+                       f"Circuits in the damage paths: **{p2['circuits_in_path']}** ({fmt(p2['customers_in_path'])} customers)",
+                       f"Line workers needed: **{fmt(p2['required']['line'])}** — still to request: {fmt(p2['needed']['line'])}",
+                       f"Transformers to replace: {fmt(p2['materials']['transformers'])}; poles: {fmt(p2['materials']['poles'])}"],
+                      [_nav("Open prediction", f"{ev}?tab=prediction")],
+                      f"At E F {c}, about {fmt(p2['pred_total'])} customers would lose power.")
 
     if rain and rain_m and re.search(r"what if|if it|becomes|scenario|more|worse|instead", q):
         r_in = float(rain_m.group(1))
@@ -81,7 +118,7 @@ def answer(s: Session, q_raw: str, e: StormEvent | None, weather: dict | None = 
         if p["needed"]["line"] > 0:
             rec = s.scalars(select(Recommendation).where(Recommendation.event_id == e.id, Recommendation.key == "mutual_aid", Recommendation.status == "open")).first()
             acts = [{"label": "Request mutual aid", "kind": "approve", "value": rec.id}] if rec else []
-            return _reply(f"**Yes — you need more people.** The {p.get('scenario', 'Cat ' + str(p['category']))} prediction needs **{fmt(p['required']['line'])}** line workers. "
+            return _reply(f"**Yes — you need more people.** The {p.get('scenario', scale_label(e, p['category']))} prediction needs **{fmt(p['required']['line'])}** line workers. "
                           f"You have {fmt(p['internal']['line'])} on the roster and {fmt(p['committed']['line'])} requested — a gap of **{fmt(p['needed']['line'])}**.",
                           ma_line or ["No mutual aid requested yet. Crews need 36–60 h to arrive."], acts + [_nav("Open crews", "/crews")],
                           f"Yes. You still need {fmt(p['needed']['line'])} more line workers.")
@@ -105,7 +142,7 @@ def answer(s: Session, q_raw: str, e: StormEvent | None, weather: dict | None = 
                           [_nav("Open outages", "/outages?priority=critical")], f"{len(crit)} critical facility outages are open.")
         if p:
             risky = [f for f in p["facilities"] if f["risk"] != "Low"]
-            return _reply(f"**{len(risky)} critical facilities** are in medium or high-risk zones.",
+            return _reply(f"**{len(risky)} critical facilities** are on medium or high-risk " + ("circuits." if tornado else "zones."),
                           [f"{f['name']} — {f['risk']} risk, feeder {f['feeder']}, backup {f['backup']}" for f in risky],
                           [_nav("Open prediction", f"{ev}?tab=prediction")], f"{len(risky)} critical facilities are at risk.")
 
@@ -122,7 +159,7 @@ def answer(s: Session, q_raw: str, e: StormEvent | None, weather: dict | None = 
         if zone and live:
             zr = next(z for z in st["zones"] if z["id"] == zone.id)
             txt = (f"Update for {zone.short}: {fmt(zr['customers_out'])} customers out, crews assigned. Estimated restoration: "
-                   f"{fmt_dt(zr['etr_at'])}. Details → bayviewpw.example/outages" if zr["etr_at"] else f"Update for {zone.short}: power is restored.")
+                   f"{fmt_dt(zr['etr_at'])}. Details → {SITE}" if zr["etr_at"] else f"Update for {zone.short}: power is restored.")
         return _reply("Here's a draft for X. Open Communications to send it for approval:", quote=txt, actions=[_nav("Open communications", "/communications")],
                       say="I've drafted a post. You can send it for approval in communications.")
 
@@ -133,7 +170,7 @@ def answer(s: Session, q_raw: str, e: StormEvent | None, weather: dict | None = 
                       actions=[_nav("Approval queue", "/communications?tab=pending"), _nav("Overview", "/")])
 
     fdr_m = re.search(r"fdr-[a-z]{3}-\d{2}", q)
-    region_m = re.search(r"(north|central|east|south(?: shore)?)\s+region|region\s+(north|central|east|south)", q)
+    region_m = re.search(rf"({_REGION_RE})\s+region|region\s+({_REGION_RE})", q)
     if not live and p and p.get("circuits") and (fdr_m or region_m):
         if fdr_m:
             c = next((c for c in p["circuits"] if c["id"] == fdr_m.group(0).upper()), None)
@@ -147,7 +184,8 @@ def answer(s: Session, q_raw: str, e: StormEvent | None, weather: dict | None = 
             r = next((r for r in p.get("regions", []) if r["name"].lower().startswith(key)), None)
             if r:
                 return _reply(f"**{r['name']} region** (predicted): {fmt(r['pred'])} customers out on {r['circuits']} circuits. Typical customer back about "
-                              f"**{r['eta_h']:.0f} h {after}** ({r['low_h']:.0f}–{r['high_h']:.0f} h); last circuit about {r['last_h']:.0f} h (up to {r['last_high_h']:.0f} h).",
+                              f"**{r['eta_h']:.0f} h {after}** ({r['low_h']:.0f}–{r['high_h']:.0f} h); last circuit about {r['last_h']:.0f} h (up to {r['last_high_h']:.0f} h). "
+                              f"Plan about **{fmt(r['line_workers'])} line** and {fmt(r['tree_workers'])} tree workers for this region.",
                               actions=[_nav("Open prediction", f"{ev}?tab=prediction")])
 
     if live and (fdr_m or region_m):
@@ -169,7 +207,8 @@ def answer(s: Session, q_raw: str, e: StormEvent | None, weather: dict | None = 
             if not cs:
                 return _reply(f"The **{r['name']}** region has no open outages.")
             return _reply(f"**{r['name']} region** ({', '.join(r['zones'])}): {fmt(r['customers_out'])} customers out on {r['circuits_out']} circuits. "
-                          f"Last circuit expected **{fmt_dt(r['etr_at'])}** ({r['confidence']}% confidence); {r['circuits_ready']} circuits ready to publish.",
+                          f"Last circuit expected **{fmt_dt(r['etr_at'])}** ({r['confidence']}% confidence); {r['crews']} crews working, {r['waiting']} tickets "
+                          f"waiting for a crew; {r['circuits_ready']} circuits ready to publish.",
                           [f"{c['id']} ({c['zone']}): {fmt(c['customers_out'])} out, ETR {fmt_t(c['etr_at'])}, {c['confidence']}%" for c in cs],
                           [_nav("Restoration board", "/restoration?level=circuit")])
 
@@ -214,15 +253,20 @@ def answer(s: Session, q_raw: str, e: StormEvent | None, weather: dict | None = 
                       [f"Mutual aid: ${crews_cost / 1e6:.1f}M ({sum(r.workers for r in ma):,} workers × ~{days:.0f} days)", f"Materials & logistics: ${mats / 1e6:.1f}M"],
                       say=f"The estimated storm cost is {(crews_cost + mats) / 1e6:.1f} million dollars.")
 
-    if re.search(r"weather|wind|landfall|where.*storm|rain|surge|track", q):
+    if re.search(r"weather|wind|landfall|touchdown|where.*storm|rain|surge|track|tornado", q):
         w = ""
         if weather and not weather.get("error"):
-            w = f" Live conditions in Tampa ({weather['source']}): {round(weather['temp_f'])}°F, wind {round(weather['wind_mph'])} mph, gusts {round(weather['gust_mph'])} mph."
+            w = f" Live conditions in {WEATHER_LABEL} ({weather['source']}): {round(weather['temp_f'])}°F, wind {round(weather['wind_mph'])} mph, gusts {round(weather['gust_mph'])} mph."
         if rain:
             onset = f" Rain starts {fmt_dt(e.landfall_at)}." if e.landfall_at else ""
             return _reply(f"**{e.name}** — {e.kind}, {e.rain_total_in or 0:g} in forecast at up to {e.rain_rate_in_hr or 0:g} in/hr over ~{e.duration_h or 0:g} h, "
                           f"soil {round((e.soil_saturation or 0) * 100)}% saturated.{onset}{w}", actions=[_nav("Open event", ev)])
-        lf = f" Landfall {fmt_dt(e.landfall_at)}." if e.landfall_at else ""
+        lf = f" {impact_word(e).capitalize()} {fmt_dt(e.landfall_at)}." if e.landfall_at else ""
+        if tornado:
+            paths = (p or {}).get("paths") or []
+            pl = "; ".join(f"EF{x['ef']}, {x['length_km']:.0f} km × {x['width_m']} m, {x['circuits_hit']} circuits" for x in paths)
+            return _reply(f"**{e.name}** — {e.kind}, EF{e.category}, gusts to {e.max_wind_mph} mph, moving {e.movement or 'n/a'}.{lf}"
+                          + (f" Damage paths: {pl}." if pl else "") + w, actions=[_nav("Open event", ev)])
         return _reply(f"**{e.name}** — {e.kind}, Cat {e.category}, {e.max_wind_mph} mph, {e.pressure_mb} mb, moving {e.movement or 'n/a'}.{lf}{w}",
                       actions=[_nav("Open event", ev)])
 
@@ -247,11 +291,52 @@ def answer(s: Session, q_raw: str, e: StormEvent | None, weather: dict | None = 
                       [{"label": "Approve: " + r.title[:38] + "…", "kind": "approve", "value": r.id} for r in recs[:2]],
                       f"Your top priority is: {recs[0].title}.")
 
-    return _reply("I can help with crews, backlog, restoration times, hardest-hit areas, critical facilities, water, cost, scenarios and messages. Try:",
-                  ['"Give me a situation briefing"', '"Do I need more people?"', '"When will Riverview be restored?"', '"What if it becomes a Cat 4?"'],
+    return _reply("I can help with crews, backlog, restoration times, hardest-hit areas, critical facilities, water, cost, scenarios, "
+                  "messages and transformer age and health. Try:",
+                  JARVIS_SUGGESTIONS,
                   say="Here are some things you can ask me.")
 
 
 def _after(e: StormEvent, hours: float):
     from datetime import timedelta
     return e.landfall_at + timedelta(hours=hours)
+
+
+def _assets(s: Session, q: str, p: dict | None) -> dict:
+    """Asset age and health: a circuit, a region, or the whole territory."""
+    from . import assets
+    fdr_m = re.search(r"fdr-[a-z]{3}-\d{2}", q)
+    if fdr_m:
+        fid = fdr_m.group(0).upper()
+        d = assets.circuit_detail(s, fid, limit=3)
+        if not d:
+            return _reply(f"I have no transformer records for circuit **{fid}**.")
+        pc = next((c for c in (p or {}).get("circuits", []) if c["id"] == fid), None)
+        return _reply(f"Circuit **{fid}** ({d['zone']}, {d['substation'] or 'n/a'}): **{fmt(d['xfmrs'])} transformers**, mean age {d['mean_age']:.0f} y "
+                      f"(oldest {d['oldest']} y), mean health index **{d['mean_hi']:.0f}**; {d['poor']} Poor/Critical ({pct(d['pct_poor'])}), "
+                      f"{pct(d['pct_over_life'])} past design life. Expected failures in 12 months: **{d['expected_failures']:.1f}**."
+                      + (f" In this storm it is predicted to lose {fmt(pc['pred'])} customers." if pc else ""),
+                      [f"{a['id']} — {a['name']}, {a['age']} y, HI {a['health_index']:.0f} ({a['condition']}): {', '.join(a['drivers'][:2])}" for a in d["transformers"]],
+                      [_nav("Open circuit", f"/asset-health?circuit={fid}")], f"Circuit {fid} has {d['poor']} transformers in poor or critical condition.")
+    regions = assets.region_health(s)
+    r = next((r for r in regions if re.search(rf"\b{re.escape(r['name'].lower())}\b", q)), None)
+    if r:
+        rows = [c for c in assets.circuit_health(s, region=r["id"])][:5]
+        oldest = sorted(assets.substations(s, region=r["id"]), key=lambda a: -a["age"])[:2]
+        return _reply(f"**{r['name']} region**: {fmt(r['xfmrs'])} distribution transformers on {r['circuits']} circuits, mean age **{r['mean_age']:.0f} y**, "
+                      f"mean health index {r['mean_hi']:.0f}; **{fmt(r['poor'])} Poor/Critical** ({pct(r['pct_poor'])}). "
+                      f"{r['power_transformers']} substation power transformers (mean age {r['power_mean_age']:.0f} y, {r['power_poor']} Poor/Critical). "
+                      f"Replacement backlog for Poor/Critical units: **${r['replacement_capex'] / 1e6:.1f}M**.",
+                      [f"Circuit {c['id']} ({c['zone']}): {c['poor']} Poor/Critical, mean age {c['mean_age']:.0f} y, risk {c['risk']:.1f}" for c in rows]
+                      + [f"Oldest substation unit: {a['name']} — {a['age']} y, HI {a['health_index']:.0f} ({a['condition']})" for a in oldest],
+                      [_nav("Asset health", f"/asset-health?region={r['id']}")], f"The {r['name']} region has {r['poor']} transformers in poor or critical condition.")
+    sm = assets.summary(s)
+    d, pw = sm["distribution"], sm["power"]
+    top = assets.top_risk(s, 3)
+    worst = sorted(regions, key=lambda r: -r["pct_poor"])[:1]
+    return _reply(f"**{fmt(d['xfmrs'])} distribution transformers**, mean age {d['mean_age']:.0f} y, {pct(d['pct_over_life'])} past design life, "
+                  f"{fmt(d['poor'])} Poor/Critical. **{pw['xfmrs']} substation power transformers**, mean age {pw['mean_age']:.0f} y, {pw['poor']} Poor/Critical. "
+                  f"Expected failures in the next 12 months: {d['expected_failures'] + pw['expected_failures']:.0f}. "
+                  + (f"Worst region: **{worst[0]['name']}** ({pct(worst[0]['pct_poor'])} Poor/Critical)." if worst else ""),
+                  [f"Highest risk: {a['name']} ({a['id']}) — {a['age']} y, HI {a['health_index']:.0f}, {', '.join(a['drivers'][:2])}" for a in top],
+                  [_nav("Asset health", "/asset-health")], f"{fmt(d['poor'])} distribution transformers are in poor or critical condition.")

@@ -7,11 +7,12 @@ import { useQuery } from "@tanstack/react-query";
 import { IconAlertTriangle, IconArrowUp, IconBolt, IconChevronDown, IconLock, IconLogin2, IconPlug, IconSparkles } from "@tabler/icons-react";
 import { api } from "../api/client";
 import { useAuth } from "../auth/AuthContext";
+import { PROFILE } from "../lib/profile";
 
 const LOGO = "https://d7umqicpi7263.cloudfront.net/img/product/f93e9a80-bf37-4444-9934-14f54d16daef.com/3b20a3af2ab95662337f13eca910ef71";
 const DEMO_EMAIL = "steve@powerconnect.ai";
 const DEMO_PASSWORD = "admin";
-// passwords of the demo admins (backend DEMO_ADMINS); every seeded Bayview role account uses ROLE_PASSWORD
+// passwords of the demo admins (backend DEMO_ADMINS); every seeded role account of the territory's utility uses ROLE_PASSWORD
 const DEMO_PASSWORDS: Record<string, string> = { [DEMO_EMAIL]: DEMO_PASSWORD, "admin@gmail.com": "admin@123" };
 const ROLE_PASSWORD = "oms360";
 
@@ -67,7 +68,7 @@ export default function LoginPage() {
             <span className="grad-b">Management</span> Platform
           </h1>
           <Text className="login-lead">
-            AI on top of the outage management system you already run. Predict storm impact before landfall, size crews,
+            AI on top of the outage management system you already run. Predict storm impact before {PROFILE.hazard === "tornado" ? "the storms fire" : "landfall"}, size crews,
             and give every customer a restoration time they can trust.
           </Text>
           <SimpleGrid cols={{ base: 1, xs: 3 }} spacing="md">
@@ -86,7 +87,7 @@ export default function LoginPage() {
             </Group>
             <Text c="#33405f" mt={6} mb="xl">How can I help you today?</Text>
             <Group className="assistant-input" wrap="nowrap" gap={8}>
-              <input placeholder="When will power be back in Brandon?" value={question} onChange={e => setQuestion(e.currentTarget.value)}
+              <input placeholder={`When will power be back in ${PROFILE.hazard === "tornado" ? "Moore" : "Brandon"}?`} value={question} onChange={e => setQuestion(e.currentTarget.value)}
                 onKeyDown={e => e.key === "Enter" && askTeaser()} aria-label="Ask the assistant" />
               <Button size="xs" radius="md" leftSection={<IconArrowUp size={14} />} onClick={askTeaser}>Send</Button>
             </Group>

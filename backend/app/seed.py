@@ -1,4 +1,4 @@
-"""First-run data: Bayview Power & Water network, roster, users, two closed historical storms and
+"""First-run data for the active territory (data.PROFILE): network, roster, users, closed historical events and
 the current planning event. Deterministic (seeded RNG) so every install looks the same."""
 import random
 from datetime import timedelta
@@ -7,18 +7,20 @@ from sqlalchemy import func, select, update
 from sqlalchemy.orm import Session
 
 from .auth import hash_password
-from .data import FACILITIES, TRACK, TRACK_H, YARDS, ZONES
+from .data import (CREW_PREFIX, DEMO_EVENT, EF_WIND, EMAIL_DOMAIN, FACILITIES, HISTORICAL, HISTORY_MA, HISTORY_POSITION, PROFILE,
+                   RAIN_DEMO as RAIN_PROFILE, SITE, UTILITY_NAME, YARDS, ZONES)
 from .db import set_setting
 from .models import (AuditLog, Crew, Facility, Feeder, Message, MutualAidRequest, NotificationRule, Outage, OutageEvent, PredictionRun,
                      PublishedEtr, Recommendation, StagingYard, StormEvent, User, Zone, utcnow)
 from .services import ops
+from .territories.common import path_track
 
 USERS = [
-    ("marcus.reed@bayviewpw.example", "Marcus Reed", "Chief Executive Officer", "executive"),
-    ("dana.whitaker@bayviewpw.example", "Dana Whitaker", "VP, Storm Operations", "ops_manager"),
-    ("luis.ortega@bayviewpw.example", "Luis Ortega", "Distribution Dispatcher", "dispatcher"),
-    ("priya.nair@bayviewpw.example", "Priya Nair", "Director, Customer Communications", "comms"),
-    ("admin@bayviewpw.example", "Sam Patel", "Systems Administrator", "admin"),
+    (f"marcus.reed@{EMAIL_DOMAIN}", "Marcus Reed", "Chief Executive Officer", "executive"),
+    (f"dana.whitaker@{EMAIL_DOMAIN}", "Dana Whitaker", "VP, Storm Operations", "ops_manager"),
+    (f"luis.ortega@{EMAIL_DOMAIN}", "Luis Ortega", "Distribution Dispatcher", "dispatcher"),
+    (f"priya.nair@{EMAIL_DOMAIN}", "Priya Nair", "Director, Customer Communications", "comms"),
+    (f"admin@{EMAIL_DOMAIN}", "Sam Patel", "Systems Administrator", "admin"),
 ]
 DEFAULT_PASSWORD = "oms360"
 FIRST = ["James", "Maria", "Robert", "Linda", "Carlos", "Angela", "Derek", "Tanya", "Kevin", "Rosa", "Brian", "Monique", "Travis",
@@ -56,6 +58,9 @@ def seed_if_empty(s: Session) -> None:
     for y in YARDS:
         s.add(StagingYard(name=y["name"], lat=y["lat"], lng=y["lng"], capacity=y["cap"]))
     s.flush()
+    ensure_network_hierarchy(s)  # substations, regions and routes before any prediction, so circuits and tornado paths line up
+    from .services.assets import ensure_assets
+    ensure_assets(s)
 
     # ---- people
     for email, name, title, role in USERS:
@@ -64,7 +69,7 @@ def seed_if_empty(s: Session) -> None:
     for kind, count, size, prefix in (("line", 160, 4, "L"), ("tree", 45, 4, "T"), ("assessment", 20, 2, "A")):
         for i in range(count):
             z = zones[i % len(zones)]
-            s.add(Crew(code=f"BV-{prefix}-{i + 1:03d}", kind=kind, company="Bayview Power & Water", source="internal", size=size,
+            s.add(Crew(code=f"{CREW_PREFIX}-{prefix}-{i + 1:03d}", kind=kind, company=UTILITY_NAME, source="internal", size=size,
                        lead=f"{rng.choice(FIRST)} {rng.choice(LAST)}", lat=z.lat + rng.uniform(-0.03, 0.03), lng=z.lng + rng.uniform(-0.03, 0.03)))
     for name, trigger, channel, on in RULES:
         s.add(NotificationRule(name=name, trigger=trigger, channel=channel, enabled=on))
@@ -72,32 +77,30 @@ def seed_if_empty(s: Session) -> None:
     s.flush()
 
     # ---- history
-    _historical(s, rng, "Hurricane Delphine", 2, now - timedelta(days=390), 0.93)
-    _historical(s, rng, "Hurricane Barrett", 1, now - timedelta(days=118), 1.08)
-    # own generator, so adding it leaves the rest of the seeded demo unchanged
-    _historical(s, random.Random(7), "June Rain Event", 1, now - timedelta(days=60), 1.04,
-                rain={"rain_total_in": 7.5, "rain_rate_in_hr": 1.8, "duration_h": 18, "soil_saturation": 0.8})
+    for h in HISTORICAL:
+        _historical(s, random.Random(h["rng"]) if "rng" in h else rng, h["name"], h["category"], now - timedelta(days=h["days_ago"]),
+                    h["actual"], rain=h.get("rain"), kind=h.get("kind"), paths=h.get("paths"))
 
-    # ---- current planning event: Hurricane Kyle, landfall ~72 h out
-    landfall = (now + timedelta(hours=72)).replace(minute=0, second=0, microsecond=0)
-    track = [{"lat": p[0], "lng": p[1], "at": (landfall + timedelta(hours=h)).isoformat(), "observed": landfall + timedelta(hours=h) <= now}
-             for p, h in zip(TRACK, TRACK_H)]
+    # ---- current planning event (Hurricane Kyle ~72 h before landfall; a tornado outbreak hours before touchdown)
+    d = DEMO_EVENT
+    impact = (now + timedelta(hours=d["hours_out"])).replace(minute=0, second=0, microsecond=0)
+    track, (lat, lng) = PROFILE.demo_track(impact, now)
     dana = s.scalars(select(User).where(User.role == "ops_manager")).first()
-    kyle = StormEvent(name="Hurricane Kyle", kind="Hurricane", source="manual", status="preparing", category=3, max_wind_mph=105,
-                      pressure_mb=968, lat=TRACK[1][0], lng=TRACK[1][1], movement="NNE at 12 mph", landfall_at=landfall, track=track,
-                      notes="Forecast landfall near the mouth of Tampa Bay. Planning scenario based on the latest advisory package.",
-                      created_by=dana.id, created_at=now - timedelta(hours=6))
+    kyle = StormEvent(name=d["name"], kind=d["kind"], source="manual", status="preparing", category=d["category"],
+                      max_wind_mph=d["max_wind_mph"], pressure_mb=d["pressure_mb"], lat=lat, lng=lng, movement=d["movement"],
+                      landfall_at=impact, track=track, notes=d["notes"], created_by=dana.id, created_at=now - timedelta(hours=6))
     s.add(kyle)
     s.flush()
+    from .services.events import scale_label
     from .services.prediction import predict
     res = predict(s, kyle)
-    s.add(PredictionRun(event_id=kyle.id, category=3, result=res, created_by=dana.id, created_at=now - timedelta(hours=2)))
+    s.add(PredictionRun(event_id=kyle.id, category=d["category"], result=res, created_by=dana.id, created_at=now - timedelta(hours=2)))
     s.add(AuditLog(at=now - timedelta(hours=6), user_name=dana.name, action="event.created", entity="storm_event", entity_id=str(kyle.id),
-                   detail="Hurricane Kyle created (Monitoring)", event_id=kyle.id))
+                   detail=f"{kyle.name} created (Monitoring)", event_id=kyle.id))
     s.add(AuditLog(at=now - timedelta(hours=3), user_name=dana.name, action="event.status", entity="storm_event", entity_id=str(kyle.id),
-                   detail="Hurricane Kyle: Monitoring → Preparing", event_id=kyle.id))
+                   detail=f"{kyle.name}: Monitoring → Preparing", event_id=kyle.id))
     s.add(AuditLog(at=now - timedelta(hours=2), user_name=dana.name, action="prediction.run", entity="storm_event", entity_id=str(kyle.id),
-                   detail=f"Cat 3 prediction: {res['pred_total']:,} customers", event_id=kyle.id))
+                   detail=f"{scale_label(kyle, d['category'])} prediction: {res['pred_total']:,} customers", event_id=kyle.id))
     _early_bands(s, rng, kyle, now)
     _pre_storm_comms(s, kyle, now)
     s.commit()
@@ -116,7 +119,7 @@ def ensure_demo_activity(s: Session) -> None:
 
 
 def _demo_storm(s: Session) -> StormEvent | None:
-    return s.scalars(select(StormEvent).where(StormEvent.name == "Hurricane Kyle", StormEvent.source == "manual",
+    return s.scalars(select(StormEvent).where(StormEvent.name == DEMO_EVENT["name"], StormEvent.source == "manual",
                                               StormEvent.status == "preparing")).first()
 
 
@@ -146,7 +149,7 @@ def refresh_demo(s: Session) -> dict:
     rng = random.Random()
     messages = 0
     for status, floor in DEMO_MESSAGE_FLOOR.items():
-        pool = [t for t in _comms_templates(e, now) if t[4] == status]
+        pool = [t for t in PROFILE.comms_templates(e, now, SITE) if t[4] == status]
         fresh = [t for t in pool if t[3] not in used] or pool  # prefer wording that isn't on screen already
         for t in fresh[:max(0, floor - have.get(status, 0))]:
             _add_message(s, e, aud, (*t[:6], rng.uniform(0.1, 1.2), t[7]), now)
@@ -156,7 +159,7 @@ def refresh_demo(s: Session) -> dict:
 
 
 # ---------------------------------------------------------------- demo: Rain Event in restoration (circuit / region ETRs)
-RAIN_DEMO = "Tampa Bay Rain Event"
+RAIN_DEMO = RAIN_PROFILE["name"]
 RAIN_DEMO_STATUS = [("restored", 55), ("in_progress", 16), ("assigned", 18), ("assessed", 24), ("reported", 20)]
 RAIN_OPEN_FLOOR = 25
 
@@ -181,9 +184,8 @@ def ensure_rain_demo(s: Session) -> None:
     onset = (now - timedelta(hours=16)).replace(minute=0, second=0, microsecond=0)
     dana = s.scalars(select(User).where(User.role == "ops_manager")).first()
     e = StormEvent(name=RAIN_DEMO, kind=RAIN, source="manual", status="restoring", category=1, max_wind_mph=35, pressure_mb=1006,
-                   lat=27.95, lng=-82.46, movement="", landfall_at=onset, track=[], rain_total_in=6.5, rain_rate_in_hr=1.8,
-                   duration_h=14, soil_saturation=0.75, created_by=dana.id if dana else None,
-                   notes="Stalled frontal boundary over Tampa Bay. 5–8 in observed, locally 10 in along the South Shore; streets flooded in Ruskin and Apollo Beach.",
+                   lat=RAIN_PROFILE["lat"], lng=RAIN_PROFILE["lng"], movement="", landfall_at=onset, track=[], rain_total_in=6.5,
+                   rain_rate_in_hr=1.8, duration_h=14, soil_saturation=0.75, created_by=dana.id if dana else None, notes=RAIN_PROFILE["notes"],
                    created_at=onset - timedelta(days=2), activated_at=onset - timedelta(hours=1), restoring_at=onset + timedelta(hours=12))
     s.add(e)
     s.flush()
@@ -203,7 +205,7 @@ def ensure_rain_demo(s: Session) -> None:
     aud = {a["id"]: a["count"] for a in comms.audiences(s)}
     for ch, audience, purpose, hours in (("sms", "flood", "warning", 26), ("x", "all", "prepare", 30), ("sms", "out", "outage", 10),
                                          ("x", "all", "etr", 2)):
-        d = comms.draft(e, ch, purpose, {"customers_out": 9000, "restored_pct": 0.55, "line_workers": 640, "worst": ["Ruskin", "Apollo Beach"]})
+        d = comms.draft(e, ch, purpose, {"customers_out": 9000, "restored_pct": 0.55, "line_workers": 640, "worst": RAIN_PROFILE["worst"]})
         _add_message(s, e, aud, (ch, audience, d["subject"], d["body"], "sent", True, hours, {}), now)
     for at, action, detail in ((e.created_at, "event.created", f"{RAIN_DEMO} created (Monitoring)"),
                                (e.activated_at, "event.status", f"{RAIN_DEMO}: Preparing → Active"),
@@ -239,60 +241,6 @@ def _refresh_rain_demo(s: Session) -> int:
     return _early_bands(s, random.Random(), e, utcnow(), TOPUP_STATUS, recent=True) if open_n < RAIN_OPEN_FLOOR else 0
 
 
-def _comms_templates(e: StormEvent, now) -> list[tuple]:
-    """(channel, audience, subject, body, status, ai, hours ago created, extra). The first 12 are the initial campaign; the rest
-    are spare wording the demo top-up draws on."""
-    from .services import comms
-    landfall = e.landfall_at or now + timedelta(hours=48)
-    later = max(now + timedelta(hours=2), landfall - timedelta(hours=6))  # still ahead of us, before landfall
-    site, name = comms.SITE, e.name
-    return [
-        ("sms", "all", "", f"Bayview Power & Water: {name} is forecast to bring hurricane-force winds to Hillsborough County. Charge phones, "
-         f"stock water and medicine, and secure outdoor items. Report outages at {site} or text OUT to 78900.", "sent", True, 31, {}),
-        ("email", "all", f"Prepare now: {name} is heading for Tampa Bay",
-         f"{name} is expected to bring damaging winds and storm surge to our service area.\n\nHow to prepare:\n• Charge phones and backup batteries\n"
-         f"• Keep a 3-day supply of water, food and medicine\n• Never use a generator indoors\n• Stay 35 ft from downed lines and report them on 911\n\n"
-         f"We have crews and mutual-aid partners staged and will restore power as soon as it is safe. Track outages at {site}.", "sent", True, 30, {}),
-        ("x", "all", "", f"{name} update: crews and mutual-aid partners are staged across Hillsborough County. Prepare now: charge devices, "
-         f"stock water, secure outdoor items. Report outages at {site} #KyleTampa", "sent", True, 28, {}),
-        ("facebook", "all", "", f"⚠️ {name} is on the way. Our line crews, tree crews and partner utilities are pre-staged so we can start "
-         f"restoring power as soon as winds drop below 35 mph. Get ready now and bookmark {site} for live outage maps and restoration times.",
-         "sent", True, 28, {}),
-        ("sms", "medical", "", "Bayview Power & Water: you are registered as medical-needs/life-support. Power may be out for several days after "
-         f"{name}. Arrange a backup power source or a stay at a special-needs shelter now. Questions: 1-800-555-0142.", "sent", False, 22, {}),
-        ("sms", "coastal", "", f"Bayview Power & Water: storm surge from {name} may flood coastal zones. Follow county evacuation orders. We will "
-         "de-energize flooded equipment for safety and restore it once water recedes.", "sent", True, 9, {}),
-        ("x", "all", "", f"Our crews are pre-staged at 4 yards across the county ahead of {name}. Expect outages to start as the outer bands "
-         f"arrive. Track restoration live at {site}", "pending", True, 0.7, {}),
-        ("sms", "zone:brn", "", f"Bayview Power & Water: crews are staged in Brandon ahead of {name}. If your power goes out, text OUT to 78900 — "
-         "smart meters will usually report it before you do.", "pending", True, 0.4, {}),
-        ("sms", "all", "", f"Bayview Power & Water: {name} landfall is expected within hours. Stay indoors, keep away from downed lines and "
-         f"track outages at {site}.", "scheduled", True, 3, {"scheduled_for": later}),
-        ("email", "water", "Precautionary boil-water guidance", "If water pressure drops in your area after the storm, boil water for 1 minute "
-         "before drinking or cooking until we confirm it is safe. We will text you when the advisory is lifted.", "scheduled", False, 5,
-         {"scheduled_for": later + timedelta(hours=1)}),
-        ("website", "all", "Storm center", f"{name}: crews staged, live outage map and restoration times at {site}. Updated every 30 minutes "
-         "once outages begin.", "draft", True, 1.5, {}),
-        ("facebook", "coastal", "", f"Coastal customers: {name} may push storm surge into Apollo Beach, Ruskin and Town 'n' Country. Please "
-         "prepare to leave if ordered.", "rejected", True, 6, {"reject_reason": "Add shelter locations and the county evacuation-zone map link."}),
-        # ---- spare wording for the demo top-up
-        ("facebook", "all", "", f"Line crews from Georgia and the Carolinas have arrived to help with {name}. If you see a downed line, stay "
-         f"35 ft away and call 911. Outage map: {site}", "pending", True, 0.5, {}),
-        ("sms", "zone:rvv", "", f"Bayview Power & Water: tree crews are clearing lines in Riverview ahead of {name}. Expect short planned "
-         "interruptions this afternoon.", "pending", True, 0.3, {}),
-        ("email", "medical", "Your storm plan: medical-needs customers", f"Ahead of {name}, please confirm your backup power plan. Special-needs "
-         "shelters open at 8 AM tomorrow. Call 1-800-555-0142 if you need transport.", "pending", False, 0.6, {}),
-        ("x", "all", "", f"{name}: we will post restoration times by neighbourhood as soon as damage assessment starts. Follow along at {site}",
-         "scheduled", True, 1, {"scheduled_for": later + timedelta(minutes=30)}),
-        ("sms", "coastal", "", f"Bayview Power & Water: if you evacuated ahead of {name}, do not return until officials say roads are safe. We "
-         "will restore flooded areas only after equipment is inspected.", "scheduled", True, 2, {"scheduled_for": later + timedelta(hours=2)}),
-        ("email", "all", f"{name}: what to expect after landfall", f"Restoration happens in a set order: hospitals and water plants, then main "
-         f"lines, then neighbourhoods. Check {site} for your area's estimated restoration time.", "draft", True, 0.8, {}),
-        ("x", "all", "", f"Power out because of {name}? Text OUT to 78900 — no need to call.", "rejected", True, 2,
-         {"reject_reason": "Mention that smart meters report most outages automatically."}),
-    ]
-
-
 def _add_message(s: Session, e: StormEvent, aud: dict, t: tuple, now) -> None:
     from .services import comms
     ch, audience, subject, body, status, ai, hours, extra = t
@@ -311,7 +259,7 @@ def _pre_storm_comms(s: Session, e: StormEvent, now) -> None:
     """The campaign a utility runs in the days before landfall, in every workflow state, plus automated-text counts."""
     from .services import comms
     aud = {a["id"]: a["count"] for a in comms.audiences(s)}
-    for t in _comms_templates(e, now)[:12]:
+    for t in PROFILE.comms_templates(e, now, SITE)[:12]:
         _add_message(s, e, aud, t, now)
     # Automated texts the early-band tickets would already have triggered; never lowers a counter that's already higher.
     rules = {r.trigger: r for r in s.scalars(select(NotificationRule)).all()}
@@ -331,6 +279,7 @@ EARLY_STATUS = [("restored", 16), ("in_progress", 7), ("assigned", 9), ("assesse
 
 def _early_bands(s: Session, rng: random.Random, e: StormEvent, now, mix=EARLY_STATUS, recent: bool = False) -> int:
     from .services.connector import new_ticket
+    from .services.events import hazard
     zones = s.scalars(select(Zone)).all()
     feeders: dict = {}
     for f in s.scalars(select(Feeder)).all():
@@ -347,7 +296,9 @@ def _early_bands(s: Session, rng: random.Random, e: StormEvent, now, mix=EARLY_S
         z = rng.choices(zones, weights)[0]
         reported = now - timedelta(minutes=rng.uniform(20, 90) if recent else rng.uniform(20, 9 * 60))
         o = new_ticket(s, e, z, feeders[z.id], 70, facilities, rng, at=reported)
-        if e.kind != "Rain Event":
+        if hazard(e) == "tornado":  # ahead of touchdown: hail and gusts from the first storms of the day
+            o.cause = rng.choices(["wind", "hail", "tree", "equipment"], [40, 15, 35, 10])[0]
+        elif e.kind != "Rain Event":
             o.cause = rng.choices(["wind", "tree", "equipment"], [45, 45, 10])[0]
         o.customers = min(o.customers, rng.randint(8, 900))
         s.execute(update(OutageEvent).where(OutageEvent.outage_id == o.id).values(at=reported))
@@ -416,14 +367,18 @@ def _ev(s: Session, o: Outage, kind: str, text: str, user: str, at) -> None:
     s.add(OutageEvent(outage_id=o.id, kind=kind, text=text, user_name=user, at=at))
 
 
-def _historical(s: Session, rng: random.Random, name: str, cat: int, landfall, actual_vs_predicted: float, rain: dict | None = None) -> None:
+def _historical(s: Session, rng: random.Random, name: str, cat: int, landfall, actual_vs_predicted: float, rain: dict | None = None,
+                kind: str | None = None, paths: list | None = None) -> None:
     """A closed storm with a full, consistent record: tickets, crews' work, ETRs, mutual aid, comms.
-    `rain` (rainfall fields) makes it a Rain Event instead of a hurricane."""
+    `rain` (rainfall fields) makes it a Rain Event; otherwise `kind` (default Hurricane). Tornadoes take their `paths`."""
     from .services.connector import new_ticket
-    from .services.events import RAIN
-    e = StormEvent(name=name, kind=RAIN if rain else "Hurricane" if cat else "Tropical Storm", status="closed", category=cat,
-                   max_wind_mph=30 if rain else {1: 85, 2: 105}[cat], pressure_mb=1008 if rain else 975 - cat * 5, lat=27.6, lng=-82.7,
-                   movement="" if rain else "NE", landfall_at=landfall, track=[], created_at=landfall - timedelta(days=4),
+    from .services.events import RAIN, TORNADO
+    kind = RAIN if rain else kind or ("Hurricane" if cat else "Tropical Storm")
+    track = path_track(paths, landfall, landfall + timedelta(days=4)) if kind == TORNADO and paths else []
+    wind = 30 if rain else EF_WIND[cat] + 10 if kind == TORNADO else {1: 85, 2: 105}.get(cat, 120)
+    e = StormEvent(name=name, kind=kind, status="closed", category=cat, max_wind_mph=wind, pressure_mb=1008 if rain else 975 - cat * 5,
+                   lat=HISTORY_POSITION[0], lng=HISTORY_POSITION[1],
+                   movement="" if rain else "NE", landfall_at=landfall, track=track, created_at=landfall - timedelta(days=4),
                    activated_at=landfall - timedelta(hours=2), restoring_at=landfall + timedelta(hours=14), closed_at=landfall + timedelta(days=4),
                    **(rain or {}))
     s.add(e)
@@ -456,12 +411,12 @@ def _historical(s: Session, rng: random.Random, name: str, cat: int, landfall, a
         ops.log(s, o, "assigned", f"Assigned to {crew.code}.", "Luis Ortega")
         ops.log(s, o, "status", "Status in progress → restored", f"{crew.code} (mobile app)")
         total += o.customers
-    for company, origin, workers in (("Southern Grid Cooperative", "Georgia", 120 * cat), ("Carolina Power Alliance", "North Carolina", 80 * cat)):
-        s.add(MutualAidRequest(event_id=e.id, company=company, origin=origin, kind="line", workers=workers, status="released",
+    for company, origin, per_cat in HISTORY_MA:
+        s.add(MutualAidRequest(event_id=e.id, company=company, origin=origin, kind="line", workers=per_cat * cat, status="released",
                                requested_at=landfall - timedelta(hours=60), eta=landfall - timedelta(hours=12),
                                arrived_at=landfall - timedelta(hours=14), released_at=landfall + timedelta(days=3), requested_by="Dana Whitaker"))
     for ch, aud, rec in (("sms", "all", 491000), ("x", "all", 48200), ("facebook", "all", 61500), ("email", "all", 373000), ("sms", "out", round(target * 0.71))):
-        s.add(Message(event_id=e.id, channel=ch, audience=aud, body=f"{name} update — see bayviewpw.example/outages", status="sent",
+        s.add(Message(event_id=e.id, channel=ch, audience=aud, body=f"{name} update — see {SITE}", status="sent",
                       recipients=rec, created_by="Priya Nair", approved_by="Marcus Reed", ai_generated=True,
                       created_at=landfall - timedelta(hours=30), sent_at=landfall - timedelta(hours=29)))
     for z in zones:

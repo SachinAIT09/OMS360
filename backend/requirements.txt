@@ -4,3 +4,4 @@ sqlalchemy>=2.0.36
 httpx>=0.27
 pydantic>=2.9
 pytest>=8.3
+tzdata>=2024.1  # time zones on Windows (customer messages in local time)

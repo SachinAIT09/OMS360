@@ -1,4 +1,4 @@
-"""Live weather for Tampa.
+"""Live weather at the territory's weather point (data.WEATHER_POINT).
 
 OpenWeather (free tier: current weather + 5-day/3-hour forecast + map tiles) when an API key is
 configured (Settings screen or OPENWEATHER_API_KEY env var); otherwise the keyless Open-Meteo API.
@@ -10,7 +10,7 @@ from datetime import datetime, timezone
 
 import httpx
 
-from .data import TAMPA
+from .data import WEATHER_POINT
 
 CACHE_TTL = 600  # seconds
 _cache: dict[str, tuple[float, dict]] = {}
@@ -27,7 +27,7 @@ def env_key() -> str:
 
 
 async def _openweather(key: str) -> dict:
-    params = {"lat": TAMPA["lat"], "lon": TAMPA["lon"], "units": "imperial", "appid": key}
+    params = {"lat": WEATHER_POINT["lat"], "lon": WEATHER_POINT["lon"], "units": "imperial", "appid": key}
     async with httpx.AsyncClient(timeout=10) as c:
         cur = await c.get("https://api.openweathermap.org/data/2.5/weather", params=params)
         if cur.status_code != 200:
@@ -46,7 +46,7 @@ async def _openweather(key: str) -> dict:
 
 
 async def _open_meteo() -> dict:
-    params = {"latitude": TAMPA["lat"], "longitude": TAMPA["lon"],
+    params = {"latitude": WEATHER_POINT["lat"], "longitude": WEATHER_POINT["lon"],
               "current": "temperature_2m,relative_humidity_2m,pressure_msl,wind_speed_10m,wind_gusts_10m,weather_code",
               "hourly": "wind_gusts_10m,precipitation_probability", "wind_speed_unit": "mph",
               "temperature_unit": "fahrenheit", "forecast_days": 3, "timezone": "UTC"}

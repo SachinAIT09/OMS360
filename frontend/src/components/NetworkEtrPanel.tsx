@@ -8,6 +8,7 @@ import type { NetworkEtrs } from "../api/types";
 import { useAuth } from "../auth/AuthContext";
 import { dt, dtShort, fmt } from "../lib/format";
 import { Empty, Loading } from "./common";
+import { AssetCell } from "./PredictionNetwork";
 import { TerritoryMap } from "./TerritoryMap";
 
 const confColor = (c: number, bar: number) => (c >= bar ? "teal" : c >= bar - 15 ? "yellow" : "orange");
@@ -28,10 +29,10 @@ export function RegionEtrTable({ eventId, onPick }: { eventId: number; onPick: (
   if (!data) return <Loading />;
   return (
     <Card padding={0}>
-      <Table.ScrollContainer minWidth={850}>
+      <Table.ScrollContainer minWidth={1050}>
         <Table>
           <Table.Thead><Table.Tr>
-            <Table.Th>Region</Table.Th><Table.Th ta="right">Customers out</Table.Th><Table.Th ta="right">Circuits out</Table.Th><Table.Th ta="right">Open tickets</Table.Th>
+            <Table.Th>Region</Table.Th><Table.Th ta="right">Customers out</Table.Th><Table.Th ta="right">Circuits out</Table.Th><Table.Th ta="right">Open tickets</Table.Th><Table.Th ta="right">Crews working</Table.Th><Table.Th ta="right">Waiting for a crew</Table.Th>
             <Table.Th>Last circuit expected</Table.Th><Table.Th ta="right">Confidence</Table.Th><Table.Th ta="right">Circuits published</Table.Th>
           </Table.Tr></Table.Thead>
           <Table.Tbody>{data.regions.map(r => (
@@ -40,6 +41,8 @@ export function RegionEtrTable({ eventId, onPick }: { eventId: number; onPick: (
               <Table.Td ta="right" className="tabular" fw={600}>{fmt(r.customers_out)}</Table.Td>
               <Table.Td ta="right" className="tabular">{r.circuits_out}</Table.Td>
               <Table.Td ta="right" className="tabular">{r.open_tickets}</Table.Td>
+              <Table.Td ta="right" className="tabular">{r.crews}</Table.Td>
+              <Table.Td ta="right" className="tabular" c={r.waiting ? "orange" : undefined}>{r.waiting ? <>{r.waiting} <Text span size="xs" c="dimmed">({r.backlog_h} job h)</Text></> : "—"}</Table.Td>
               <Table.Td>{r.etr_at ? <Text size="sm" fw={600}>{dt(r.etr_at)}</Text> : <Text size="sm" c="dimmed">No outages</Text>}</Table.Td>
               <Table.Td><Confidence value={r.confidence} bar={data.publish_confidence} /></Table.Td>
               <Table.Td ta="right">{r.circuits_out ? <>{r.circuits_published} / {r.circuits_out}{r.circuits_ready > 0 && <Badge ml={6} size="xs" color="teal" variant="light">{r.circuits_ready} ready</Badge>}</> : "—"}</Table.Td>
@@ -94,7 +97,8 @@ export function CircuitEtrTable({ eventId, region, onRegion }: { eventId: number
           <Table>
             <Table.Thead><Table.Tr>
               <Table.Th>Circuit</Table.Th><Table.Th>Substation · zone</Table.Th><Table.Th>Region</Table.Th><Table.Th ta="right">Customers out</Table.Th>
-              <Table.Th ta="right">Tickets</Table.Th><Table.Th ta="right">Crews</Table.Th><Table.Th>AI ETR</Table.Th><Table.Th ta="right">Confidence</Table.Th><Table.Th>Customers see it</Table.Th>
+              <Table.Th ta="right">Tickets</Table.Th><Table.Th ta="right">Crews</Table.Th><Table.Th>AI ETR</Table.Th><Table.Th ta="right">Confidence</Table.Th>
+              <Table.Th ta="right">Transformers</Table.Th><Table.Th>Customers see it</Table.Th>
             </Table.Tr></Table.Thead>
             <Table.Tbody>{rows.map(c => (
               <Table.Tr key={c.id}>
@@ -106,6 +110,7 @@ export function CircuitEtrTable({ eventId, region, onRegion }: { eventId: number
                 <Table.Td ta="right" className="tabular">{c.crews}</Table.Td>
                 <Table.Td>{c.etr_at ? <Text size="sm" fw={600}>{dt(c.etr_at)}</Text> : "—"}</Table.Td>
                 <Table.Td><Confidence value={c.confidence} bar={threshold} /></Table.Td>
+                <Table.Td ta="right"><AssetCell c={{ asset_hi: c.asset_hi ?? undefined, pct_poor: c.pct_poor ?? undefined }} /></Table.Td>
                 <Table.Td>
                   <Tooltip label={c.published ? `Published ${dt(c.published_at)}` : "Not visible to customers"}>
                     <Switch checked={c.published} disabled={!canPublish} onChange={ev => toggle.mutate({ id: c.id, on: ev.currentTarget.checked })} />

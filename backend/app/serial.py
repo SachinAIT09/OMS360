@@ -10,7 +10,8 @@ def user(u: User) -> dict:
 
 
 def event(e: StormEvent) -> dict:
-    return {"id": e.id, "name": e.name, "kind": e.kind, "source": e.source, "nhc_id": e.nhc_id, "status": e.status,
+    from .services.events import hazard
+    return {"id": e.id, "name": e.name, "kind": e.kind, "hazard": hazard(e), "source": e.source, "nhc_id": e.nhc_id, "status": e.status,
             "category": e.category, "max_wind_mph": e.max_wind_mph, "pressure_mb": e.pressure_mb, "lat": e.lat, "lng": e.lng,
             "movement": e.movement, "landfall_at": e.landfall_at, "track": e.track or [], "notes": e.notes,
             "rain_total_in": e.rain_total_in, "rain_rate_in_hr": e.rain_rate_in_hr, "duration_h": e.duration_h, "soil_saturation": e.soil_saturation,

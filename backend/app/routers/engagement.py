@@ -10,7 +10,7 @@ from sqlalchemy.orm import Session
 
 from .. import bus, serial, weather
 from ..auth import current_user, current_user_query, require
-from ..data import SAMPLE_ADDRESSES, address_feeder
+from ..data import SAMPLE_ADDRESSES, UTILITY_NAME, address_feeder
 from ..db import get_session, get_setting
 from ..models import (ChatConversation, ChatMessage, Crew, Facility, Feeder, Message, NotificationRule, Outage, PublishedEtr, StagingYard, StormEvent,
                       User, Zone, utcnow)
@@ -392,7 +392,7 @@ def public_lookup(address: str, s: Session = Depends(get_session)):
     if not zid:
         zid = next((z.id for z in zones if z.short.lower() in a), None)
     if not zid:
-        raise HTTPException(404, "We couldn't find that address in the Bayview service area.")
+        raise HTTPException(404, f"We couldn't find that address in the {UTILITY_NAME} service area.")
     zone = s.get(Zone, zid)
     e = _public_event(s)
     shown = next((x for x, z in SAMPLE_ADDRESSES if z == zid and (a == x.lower() or a in x.lower())), None) \

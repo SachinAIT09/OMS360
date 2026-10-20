@@ -9,7 +9,7 @@ import { useAuth } from "../auth/AuthContext";
 import { ago, dt, fmt, label } from "../lib/format";
 import { OutageStatusBadge, PriorityBadge } from "./badges";
 
-const CAUSES = ["wind", "tree", "surge", "flooding", "equipment", "unknown"];
+const CAUSES = ["wind", "tree", "tornado", "hail", "surge", "flooding", "equipment", "unknown"];
 const DAMAGE = ["service", "conductor", "transformer", "pole", "none", "unknown"];
 
 export function OutageDrawer({ id, onClose }: { id: number | null; onClose: () => void }) {

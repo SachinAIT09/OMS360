@@ -4,11 +4,12 @@ export type OutageStatus = "reported" | "assessed" | "assigned" | "in_progress" 
 
 export interface User { id: number; email: string; name: string; title: string; role: Role; role_label: string; active: boolean; last_login_at: string | null; permissions: string[] }
 
-export const EVENT_KINDS = ["Hurricane", "Tropical Storm", "Tropical Depression", "Severe Thunderstorm", "Winter Storm", "Rain Event"] as const;
+export const EVENT_KINDS = ["Hurricane", "Tropical Storm", "Tropical Depression", "Tornado", "Severe Thunderstorm", "Winter Storm", "Rain Event"] as const;
 
-export interface TrackPoint { lat: number; lng: number; at: string; observed: boolean }
+/** A storm track point; tornado tracks are one or more damage paths (path index, EF rating and damage width on each point). */
+export interface TrackPoint { lat: number; lng: number; at: string; observed: boolean; path?: number; ef?: number; width_m?: number }
 export interface StormEvent {
-  id: number; name: string; kind: string; source: "manual" | "nhc"; nhc_id: string | null; status: EventStatus; category: number;
+  id: number; name: string; kind: string; hazard?: "wind" | "rain" | "tornado"; source: "manual" | "nhc" | "nws"; nhc_id: string | null; status: EventStatus; category: number;
   max_wind_mph: number; pressure_mb: number; lat: number; lng: number; movement: string; landfall_at: string | null; track: TrackPoint[] | null;
   notes: string; created_at: string; activated_at: string | null; restoring_at: string | null; closed_at: string | null;
   /** Rain events only (kind "Rain Event"); landfall_at is then the rain onset. */
@@ -16,13 +17,24 @@ export interface StormEvent {
   predicted?: number | null; tickets?: number; customers_affected?: number;
 }
 
-export interface Hazard { gust_mph?: number; rain_in?: number; surge_ft?: number; arrival_at?: string }
-export interface PredZone { id: string; name: string; short: string; customers: number; pred: number; pct: number; eta_h: number; driver: string; hazard?: Hazard | null }
+export interface Hazard { gust_mph?: number; rain_in?: number; surge_ft?: number; arrival_at?: string; path_km?: number | null }
+export interface PredZone {
+  id: string; name: string; short: string; customers: number; pred: number; pct: number; eta_h: number; driver: string; hazard?: Hazard | null;
+  circuits_in_path?: number;
+}
 export interface PredCircuit {
   id: string; zone_id: string; zone: string; substation: string | null; region_id: string | null; region: string | null; customers: number; pred: number;
   pct: number; eta_h: number; low_h: number; high_h: number; confidence: number; overhead_pct: number; years_since_trim: number;
+  /** Transformer health on the circuit (absent on runs made before the asset register existed). */
+  asset_hi?: number; pct_poor?: number; mean_xfmr_age?: number; xfmrs?: number;
+  /** Tornadoes: closest approach to a damage path, how directly it is hit (0–1) and whether it is rebuilt rather than repaired. */
+  in_path?: boolean; path_km?: number | null; core?: number; path_ef?: number | null; rebuild_out?: number;
 }
-export interface PredRegion { id: string | null; name: string; pred: number; circuits: number; eta_h: number; low_h: number; high_h: number; last_h: number; last_high_h: number; confidence: number }
+export interface PredRegion {
+  id: string | null; name: string; pred: number; circuits: number; line_workers: number; tree_workers: number; eta_h: number; low_h: number; high_h: number;
+  last_h: number; last_high_h: number; confidence: number; circuits_in_path?: number; xfmrs_in_path?: number;
+}
+export interface TornadoPath { ef: number; width_m: number; length_km: number; circuits_hit: number; customers_in_path: number; xfmrs_in_path: number; start_at: string | null }
 export interface ForecastZone extends Hazard { zone_id: string; zone: string; filled?: boolean }
 export interface ForecastInfo {
   latest: { id: number; source: string; issued_at: string; created_by: string; created_at: string; zones: ForecastZone[] } | null;
@@ -33,8 +45,9 @@ export interface Calibration {
   bands: { band: string; count: number; promised_pct: number; actual_pct: number; mae_h: number }[];
 }
 export interface Prediction {
-  kind?: "wind" | "rain"; scenario?: string; rain_in?: number | null; forecast?: { id: number; source: string; issued_at: string } | null;
+  kind?: "wind" | "rain" | "tornado"; scenario?: string; rain_in?: number | null; forecast?: { id: number; source: string; issued_at: string } | null;
   circuits?: PredCircuit[]; regions?: PredRegion[];
+  ef?: number; paths?: TornadoPath[]; circuits_in_path?: number; customers_in_path?: number;
   category: number; wind_mph: number; surge: string | null; pred_total: number; total_customers: number; zones: PredZone[];
   required: Crew3; internal: Crew3; committed: Crew3; needed: Crew3; coverage: number; avg_eta_h: number; p95_eta_h: number; confidence: number;
   critical_at_risk: number; facilities: { id: number; name: string; kind: string; type: string; feeder: string; backup: string; risk: string }[];
@@ -58,10 +71,12 @@ export interface CircuitEtr {
   id: string; customers: number | null; lat: number; lng: number; substation_id: string | null; substation: string | null; zone_id: string; zone: string;
   region_id: string | null; region: string | null; customers_out: number; open_tickets: number; crews: number; etr_at: string | null;
   confidence: number; published: boolean; published_at: string | null;
+  /** Mean transformer health on the circuit and its Poor/Critical share (null without an asset register). */
+  asset_hi?: number | null; pct_poor?: number | null;
 }
 export interface RegionEtr {
   id: string; name: string; zones: string[]; customers_out: number; open_tickets: number; circuits_out: number; etr_at: string | null;
-  confidence: number | null; circuits_published: number; circuits_ready: number;
+  confidence: number | null; circuits_published: number; circuits_ready: number; crews: number; waiting: number; backlog_h: number;
 }
 export interface RoutesInfo {
   feeders: { id: string; zone: string | null; substation: string | null; source: "synthetic" | "imported" | null; route: [number, number][][] }[];
@@ -126,5 +141,51 @@ export interface Weather {
 }
 export interface NhcStorm {
   nhc_id: string; name: string; kind: string; lat: number; lng: number; wind_mph: number; category: number; pressure_mb: number;
-  heading_deg: number; speed_mph: number; movement: string; updated_at: string; distance_to_tampa_mi: number; advisory_url: string;
+  heading_deg: number; speed_mph: number; movement: string; updated_at: string; distance_mi: number; advisory_url: string;
+}
+
+// ---------------------------------------------------------------- asset age and health
+export type Condition = "Good" | "Fair" | "Poor" | "Critical";
+export interface AssetRollup {
+  xfmrs: number; mean_age: number; oldest: number; mean_hi: number; poor: number; critical: number; pct_poor: number; pct_over_life: number;
+  expected_failures: number; risk: number; replacement_capex: number;
+}
+export interface RegionHealth extends AssetRollup {
+  id: string; name: string; circuits: number; power_transformers: number; power_poor: number; power_mean_age: number;
+}
+export interface CircuitHealth extends AssetRollup {
+  id: string; zone_id: string; zone: string; region_id: string | null; region: string | null; substation_id: string | null; substation: string | null;
+  customers: number; overhead_pct: number | null; critical_facility: string | null;
+}
+export interface Asset {
+  id: string; kind: "power_transformer" | "dist_transformer"; name: string; substation_id: string | null; feeder_id: string | null; zone_id: string;
+  lat: number; lng: number; install_year: number; age: number; manufacturer: string; rating_kva: number; mounting: string; phases: number;
+  last_inspection: number | null; inspection_score: number | null; peak_load_pct: number | null; dga_tdcg_ppm: number | null;
+  oil_moisture_ppm: number | null; through_faults: number | null; ltc: boolean; maintenance_overdue: boolean;
+  health_index: number; condition: Condition; pof_12m: number; risk_score: number; replacement_cost: number; drivers: string[];
+}
+export interface SubstationAsset extends Asset { substation: string; region_id: string | null; region: string | null; zone: string | null; circuits: number }
+export interface AssetSummary {
+  distribution: AssetRollup; power: AssetRollup; bands: Record<Condition, number>; power_bands: Record<Condition, number>;
+  age_histogram: { decade: string; count: number }[]; regions: RegionHealth[]; replacement_capex: number; density: number; top_risk: Asset[];
+}
+export interface CircuitHealthDetail extends CircuitHealth {
+  route: [number, number][][] | null; bands: Record<Condition, number>; age_histogram: { decade: string; count: number }[];
+  hi_histogram: { band: string; count: number }[]; transformers: Asset[]; offset: number; limit: number; power_transformers: Asset[];
+}
+
+export interface PlanOutlook { pct_poor: number; poor: number; expected_failures: number; risk: number }
+export interface ReplacementPlan {
+  budget: number; region: string | null; kind: string | null; units: number; cost: number; fleet: number; poor_replaced: number;
+  by_kind: Record<string, number>; risk_reduced_pct: number; failures_avoided: number;
+  projection: { year: number; label: string; no_action: PlanOutlook; with_plan: PlanOutlook }[];
+  frontier: { budget: number; risk_reduced_pct: number }[];
+  by_region: { id: string; name: string; units: number; power: number; cost: number; risk_reduced: number }[];
+  items: { id: string; kind: string; name: string; where: string | null; region: string | null; age: number; health_index: number;
+    condition: Condition; cost: number; risk_reduced: number; drivers: string[] }[];
+}
+export interface NwsAlert {
+  id: string; event: string; headline: string; area: string; severity: string; onset: string | null; expires: string | null;
+  ef_estimate: number | null; detection: string; damage_threat: string; max_hail: string; lat: number | null; lng: number | null;
+  motion: { lat: number; lng: number; heading_deg: number; speed_mph: number } | null; polygon: [number, number][]; importable: boolean;
 }

@@ -14,6 +14,7 @@ import { CrewStatusBadge, MutualAidBadge } from "../components/badges";
 import { Empty, Loading, PageHeader, Stat } from "../components/common";
 import { OutageDrawer } from "../components/OutageDrawer";
 import { TerritoryMap } from "../components/TerritoryMap";
+import { PROFILE } from "../lib/profile";
 import { dt, fmt, label, money } from "../lib/format";
 
 const CREW_COLOR: Record<string, string> = { available: "#3ec46d", staged: "#22b8cf", assigned: "#f5a623", working: "#2b6bff", off_shift: "#8a96c0" };
@@ -199,7 +200,7 @@ function Yards() {
                 <Table.Td><Progress value={((y.staged_workers ?? 0) / y.capacity) * 100} size="sm" /></Table.Td></Table.Tr>))}
             </Table.Tbody>
           </Table>
-          <Text size="xs" c="dimmed" p="sm">All yards sit outside storm-surge zones A/B and within 25 minutes of the highest-impact zones.</Text>
+          <Text size="xs" c="dimmed" p="sm">{PROFILE.hazard === "tornado" ? "All yards sit outside the forecast tornado tracks and within 45 minutes of the highest-impact circuits." : "All yards sit outside storm-surge zones A/B and within 25 minutes of the highest-impact zones."}</Text>
         </Card>
       </Grid.Col>
       <Grid.Col span={{ base: 12, lg: 6 }}><Card padding="sm"><TerritoryMap height={400} yards={data} /></Card></Grid.Col>
