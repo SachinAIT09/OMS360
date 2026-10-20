@@ -61,19 +61,54 @@ def _add_columns(table: str, columns: dict[str, str]) -> None:
                 c.exec_driver_sql(f"ALTER TABLE {table} ADD COLUMN {name} {ddl}")
 
 
+ASSET_COPY_COLS = ("id", "kind", "name", "substation_id", "feeder_id", "zone_id", "lat", "lng", "install_year", "manufacturer", "rating_kva",
+                   "mounting", "phases", "last_inspection", "inspection_score", "peak_load_pct", "dga_tdcg_ppm", "oil_moisture_ppm",
+                   "through_faults", "ltc", "maintenance_overdue", "health_index", "condition", "pof_12m", "risk_score", "replacement_cost", "drivers")
+
+
+def _upgrade_assets() -> bool:
+    """Asset registers created before install years and health could be unknown (NOT NULL columns, no details/history):
+    rebuild the table with the current schema, keeping every row. Returns True when rows need re-scoring."""
+    with engine.begin() as c:
+        tables = {r[0] for r in c.exec_driver_sql("SELECT name FROM sqlite_master WHERE type='table'")}
+        if "assets" not in tables:
+            return False
+        cols = {r[1] for r in c.exec_driver_sql("PRAGMA table_info(assets)")}
+        if "details" in cols:
+            return False
+        c.exec_driver_sql("DROP TABLE IF EXISTS assets_old")
+        c.exec_driver_sql("ALTER TABLE assets RENAME TO assets_old")
+        for ix in ("ix_assets_kind", "ix_assets_feeder_id", "ix_assets_substation_id"):
+            c.exec_driver_sql(f"DROP INDEX IF EXISTS {ix}")
+    from .models import Asset
+    Asset.__table__.create(engine)
+    with engine.begin() as c:
+        cols = ", ".join(ASSET_COPY_COLS)
+        c.exec_driver_sql(f"INSERT INTO assets ({cols}, details, source, status, gaps, confidence) "
+                          f"SELECT {cols}, '{{}}', 'sandbox', 'in_service', '[]', 'medium' FROM assets_old")
+        c.exec_driver_sql("DROP TABLE assets_old")
+    return True
+
+
 def init_db() -> None:
     from .seed import ensure_demo_activity, ensure_forecast_demo, ensure_network_hierarchy, ensure_rain_demo, seed_if_empty
     from .services.assets import ensure_assets
+    upgraded = _upgrade_assets()
     Base.metadata.create_all(engine)
     _upgrade_chat()
     _add_columns("storm_events", {"rain_total_in": "FLOAT", "rain_rate_in_hr": "FLOAT", "duration_h": "FLOAT", "soil_saturation": "FLOAT"})
     _add_columns("zones", {"region_id": "VARCHAR(20) REFERENCES regions(id)"})
     _add_columns("published_circuit_etrs", {"restored_at": "DATETIME"})
+    _add_columns("outages", {"asset_id": "VARCHAR(24)"})
     _add_columns("feeders", {"substation_id": "VARCHAR(20) REFERENCES substations(id)", "route": "JSON", "route_source": "VARCHAR(12)"})
     with SessionLocal() as s:
         seed_if_empty(s)
         ensure_network_hierarchy(s)
-        ensure_assets(s)  # databases created before the asset register existed
+        ensure_assets(s)  # databases created before the asset register existed (and new equipment types)
+        if upgraded:
+            from .services.assets import rescore
+            rescore(s)
+            s.commit()
         ensure_demo_admin(s)
         ensure_demo_activity(s)
         ensure_rain_demo(s)

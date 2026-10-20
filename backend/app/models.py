@@ -122,22 +122,23 @@ class Facility(Base):
 
 
 class Asset(Base):
-    """Major equipment with age and condition: substation power transformers and distribution transformers.
-    Inputs come from the asset register and inspections; health_index … replacement_cost are computed by
-    services/assets.py and stored so the network can be ranked without recomputing it."""
+    """Major equipment with age and condition: substation power transformers, distribution transformers, feeder breakers,
+    line reclosers and poles. Inputs come from the asset register and inspections (`source` says which: the sandbox's
+    synthetic register or an import); health_index … drivers are computed by services/asset_model.py. A missing install
+    year or inspection is recorded as a gap, never filled in: the health index is then None ("Unknown")."""
     __tablename__ = "assets"
-    id: Mapped[str] = mapped_column(String(24), primary_key=True)  # PT-OKC-1-1, DT-OKC-01-0042
-    kind: Mapped[str] = mapped_column(String(20), index=True)  # power_transformer | dist_transformer
+    id: Mapped[str] = mapped_column(String(24), primary_key=True)  # PT-OKC-1-1, DT-OKC-01-0042, BK-OKC-01, RC-OKC-01-1, PL-OKC-01-0007
+    kind: Mapped[str] = mapped_column(String(20), index=True)  # power_transformer | dist_transformer | breaker | recloser | pole
     name: Mapped[str] = mapped_column(String(80))
     substation_id: Mapped[str | None] = mapped_column(String(20), index=True, nullable=True)
     feeder_id: Mapped[str | None] = mapped_column(String(20), index=True, nullable=True)  # None for substation units
     zone_id: Mapped[str] = mapped_column(String(10))
     lat: Mapped[float] = mapped_column(Float)
     lng: Mapped[float] = mapped_column(Float)
-    install_year: Mapped[int] = mapped_column(Integer)
+    install_year: Mapped[int | None] = mapped_column(Integer, nullable=True)  # None = not recorded
     manufacturer: Mapped[str] = mapped_column(String(40), default="")
-    rating_kva: Mapped[float] = mapped_column(Float)  # power transformers: kVA too (e.g. 28000 = 28 MVA)
-    mounting: Mapped[str] = mapped_column(String(10))  # pole | pad | sub
+    rating_kva: Mapped[float] = mapped_column(Float, default=0)  # transformers (power: kVA too, e.g. 28000 = 28 MVA); 0 for poles
+    mounting: Mapped[str] = mapped_column(String(10))  # pole | pad | sub | line
     phases: Mapped[int] = mapped_column(Integer, default=1)
     last_inspection: Mapped[int | None] = mapped_column(Integer, nullable=True)  # year
     inspection_score: Mapped[int | None] = mapped_column(Integer, nullable=True)  # 1 good … 5 very poor
@@ -148,13 +149,52 @@ class Asset(Base):
     through_faults: Mapped[int | None] = mapped_column(Integer, nullable=True)
     ltc: Mapped[bool] = mapped_column(Boolean, default=False)  # on-load tap changer fitted
     maintenance_overdue: Mapped[bool] = mapped_column(Boolean, default=False)
+    # type-specific inputs: poles {material, pole_class, height_ft, strength_pct, strength_test_year};
+    # breakers / reclosers {interrupter, operations, rated_operations, last_test_year, test_result}
+    details: Mapped[dict] = mapped_column(JSON, default=dict)
+    source: Mapped[str] = mapped_column(String(10), default="sandbox")  # sandbox | imported
+    status: Mapped[str] = mapped_column(String(16), default="in_service")  # in_service | damaged (confirmed in the field)
     # computed
-    health_index: Mapped[float] = mapped_column(Float, default=100)  # 0 end of life … 100 as new
-    condition: Mapped[str] = mapped_column(String(10), default="Good")  # Good | Fair | Poor | Critical
+    health_index: Mapped[float | None] = mapped_column(Float, nullable=True)  # 0 end of life … 100 as new; None = unknown
+    condition: Mapped[str] = mapped_column(String(10), default="Good")  # Good | Fair | Poor | Critical | Unknown
     pof_12m: Mapped[float] = mapped_column(Float, default=0)  # probability of failure in the next 12 months
     risk_score: Mapped[float] = mapped_column(Float, default=0)  # PoF × consequence (customer-weighted)
     replacement_cost: Mapped[float] = mapped_column(Float, default=0)
     drivers: Mapped[list] = mapped_column(JSON, default=list)  # what pulls the health index down, worst first
+    gaps: Mapped[list] = mapped_column(JSON, default=list)  # missing or stale inputs, in words
+    confidence: Mapped[str] = mapped_column(String(8), default="medium")  # high | medium | low — how much evidence is behind it
+
+
+class AssetEvent(Base):
+    """An asset's history: inspections and tests (with their readings), maintenance, failures, confirmed storm damage and
+    replacements. Confirmed damage comes from a field assessment on an outage ticket (outage_id); it is never inferred
+    from a prediction."""
+    __tablename__ = "asset_events"
+    id: Mapped[int] = mapped_column(primary_key=True)
+    asset_id: Mapped[str] = mapped_column(ForeignKey("assets.id", ondelete="CASCADE"), index=True)
+    at: Mapped[datetime] = mapped_column(TS)
+    kind: Mapped[str] = mapped_column(String(16))  # inspection | test | maintenance | failure | damage | replacement | repair
+    summary: Mapped[str] = mapped_column(String(200))
+    data: Mapped[dict] = mapped_column(JSON, default=dict)  # readings, e.g. {"score": 3, "dga_tdcg_ppm": 1450}
+    event_id: Mapped[int | None] = mapped_column(ForeignKey("storm_events.id", ondelete="SET NULL"), nullable=True)
+    outage_id: Mapped[int | None] = mapped_column(ForeignKey("outages.id", ondelete="SET NULL"), nullable=True)
+    source: Mapped[str] = mapped_column(String(40), default="Sandbox history")
+
+
+class WorkOrder(Base):
+    __tablename__ = "work_orders"
+    id: Mapped[int] = mapped_column(primary_key=True)
+    asset_id: Mapped[str] = mapped_column(ForeignKey("assets.id", ondelete="CASCADE"), index=True)
+    kind: Mapped[str] = mapped_column(String(16))  # inspect | test | repair | replace | maintain
+    title: Mapped[str] = mapped_column(String(160))
+    reason: Mapped[str] = mapped_column(Text, default="")
+    priority: Mapped[str] = mapped_column(String(10), default="Medium")  # Critical | High | Medium | Low
+    status: Mapped[str] = mapped_column(String(12), default="open")  # open | scheduled | done | cancelled
+    due_at: Mapped[datetime | None] = mapped_column(TS, nullable=True)
+    event_id: Mapped[int | None] = mapped_column(ForeignKey("storm_events.id", ondelete="SET NULL"), nullable=True)
+    created_by: Mapped[str] = mapped_column(String(80))
+    created_at: Mapped[datetime] = mapped_column(TS, default=utcnow)
+    updated_at: Mapped[datetime] = mapped_column(TS, default=utcnow, onupdate=utcnow)
 
 
 class StagingYard(Base):
@@ -259,7 +299,8 @@ class Outage(Base):
     event_id: Mapped[int | None] = mapped_column(ForeignKey("storm_events.id"), nullable=True, index=True)
     zone_id: Mapped[str] = mapped_column(ForeignKey("zones.id"), index=True)
     feeder_id: Mapped[str] = mapped_column(String(20))
-    device: Mapped[str] = mapped_column(String(40), default="")  # e.g. Transformer T-4471
+    device: Mapped[str] = mapped_column(String(40), default="")  # e.g. Transformer DT-OKC-01-0042
+    asset_id: Mapped[str | None] = mapped_column(String(24), nullable=True, index=True)  # the damaged unit, when known
     cause: Mapped[str] = mapped_column(String(20), default="unknown")  # wind|tree|surge|equipment|flooding|unknown
     damage: Mapped[str] = mapped_column(String(20), default="unknown")  # pole|conductor|transformer|service|none|unknown
     customers: Mapped[int] = mapped_column(Integer)
